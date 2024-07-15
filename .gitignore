@@ -1,0 +1,7 @@
+python/IsaacGymEnvs/isaacgymenvs/runs
+python/IsaacGymEnvs/isaacgymenvs/wandb
+python/IsaacGymEnvs/isaacgymenvs/tasks/__pycache__
+python/isaacgym/__pycache__
+__pycache__
+python/IsaacGymEnvs/isaacgymenvs.egg-info
+python/IsaacGymEnvs/isaacgymenvs/result
