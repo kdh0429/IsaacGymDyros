@@ -30,5 +30,5 @@ python train.py task=DyrosDynamicWalk checkpoint=runs/DyrosDynamicWalk/nn/DyrosD
 1. **ImportError: libpython3.8.so.1.0: cannot open shared object file: No such file or directory**
    - Solution: 
    ```bash
-   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/$USER_NAME/anaconda3/envs/rlgpu4/lib
+   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/tech/anaconda3/envs/rlgpu4/lib
    ```

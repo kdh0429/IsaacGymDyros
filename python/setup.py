@@ -29,12 +29,12 @@ def _do_setup():
         package_files = package_files + collect_files("isaacgym/_bindings/linux-x86_64")
 
     setup(name='isaacgym',
-          version='1.0.preview3',
+          version='1.0.preview4',
           description='GPU-accelerated simulation and reinforcement learning toolkit',
           author='NVIDIA CORPORATION',
           author_email='',
           url='http://developer.nvidia.com/isaac-gym',
-          license='Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.',
+          license='Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.',
           packages=packages,
           package_data={
               "isaacgym": package_files

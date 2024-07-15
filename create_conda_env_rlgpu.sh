@@ -3,7 +3,7 @@
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # should match env name from YAML
-ENV_NAME=rlgpu3
+ENV_NAME=rlgpu4
 
 pushd "${ROOT_DIR}/python"
 
@@ -21,7 +21,7 @@ pushd "${ROOT_DIR}/python"
     conda remove -y -n "${ENV_NAME}" --all
 
     # create the env from YAML
-    conda env create -f ./rlgpu_conda_env.yml
+    conda env create -f rlgpu_conda_env.yml
     if [ $? -ne 0 ]; then
         echo "*** Failed to create env"
         exit 1

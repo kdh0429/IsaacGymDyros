@@ -222,7 +222,7 @@ def unscale(x, lower, upper):
 def unscale_np(x, lower, upper):
     return (2.0 * x - upper - lower) / (upper - lower)
 
-#Gene's Function
+# Donghyeon's Function
 
 @torch.jit.script
 def quat2mat(q):
@@ -271,3 +271,8 @@ def mat2euler(mat):
 @torch.jit.script
 def quat2euler(q):
     return mat2euler(quat2mat(q))
+    
+@torch.jit.script
+def quat_yaw_reflected(q):
+    _, _, yaw = quat2euler(q)
+    return quat_from_euler_xyz(torch.zeros_like(yaw),torch.zeros_like(yaw),yaw)

@@ -90,7 +90,7 @@ params:
     seq_len: 4
     bounds_loss_coef: 0.
     #wandb
-    wandb_activate: True # True, False
+    wandb_activate: False # True, False
     log_wandb_frequency: 10
     num_rewards: 14 #Modify with individual tasks 
     num_extra_logging: 1
