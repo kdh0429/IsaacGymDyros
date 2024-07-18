@@ -51,9 +51,13 @@ class DyrosDynamicWalk(VecTask):
         super().__init__(config=self.cfg, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless)
 
         if self.viewer != None:
-            cam_pos = gymapi.Vec3(50.0, 25.0, 2.4)
-            cam_target = gymapi.Vec3(45.0, 25.0, 0.0)
-            self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
+            #rui - cam
+            # cam_pos = gymapi.Vec3(50.0, 25.0, 2.4)
+            # cam_target = gymapi.Vec3(45.0, 25.0, 0.0)
+            # self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
+            self.camera_follow = self.cfg["env"]["viewer"].get("cameraFollow", True)
+            self.camera_offset = gymapi.Vec3(*self.cfg["env"]["viewer"].get("cameraOffset", [0.0, 0.0, 2.0]))
+            
         #for PD controll
         self.Kp = torch.tensor([2000.0, 5000.0, 4000.0, 3700.0, 3200.0, 3200.0,
             2000.0, 5000.0, 4000.0, 3700.0, 3200.0, 3200.0,
@@ -561,7 +565,10 @@ class DyrosDynamicWalk(VecTask):
         self.action_torque_pre = self.action_torque.clone()
         self.contact_forces_pre = self.contact_forces.clone()
         self.actions_pre = self.actions.clone()
-
+        
+        #rui - cam
+        if self.viewer is not None and self.camera_follow:
+            self.update_camera()
 
         # with open('force_data.txt', 'a') as f:
         #     # f.write('lfoot:')
@@ -577,6 +584,13 @@ class DyrosDynamicWalk(VecTask):
         #     a = 9.81*self.vec_sensor_tensor[0,8].item()
         #     f.write(str(a))
         #     f.write('\n')
+    
+    #rui - cam
+    def update_camera(self):
+        base_pos = self.root_states[0, :3].cpu().numpy()  # Assuming single robot
+        cam_pos = gymapi.Vec3(base_pos[0] + self.camera_offset.x, base_pos[1] + self.camera_offset.y, base_pos[2] + self.camera_offset.z)
+        cam_target = gymapi.Vec3(base_pos[0], base_pos[1], base_pos[2])
+        self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
     def check_termination(self):
         # reset agents

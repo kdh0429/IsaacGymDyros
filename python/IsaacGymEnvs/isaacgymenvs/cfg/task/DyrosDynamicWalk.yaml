@@ -8,7 +8,7 @@ env:
   envSpacing: 5
   episodeLength: 32 # seconds
   enableDebugVis: False
-  controlFrequencyInv: 2
+  controlFrequencyInv: 32 #rui - [4 = 125Hz, 2 = 250Hz, 1 = 500Hz ]
   
   clipActions: 1.0
 
@@ -21,6 +21,10 @@ env:
 
   initialHieght: 0.93
 
+  #rui - cam
+  viewer:
+    cameraFollow: true
+    cameraOffset: [5.0, 5.0, 2.0]
 
   # cost parameters
   deathCost: 0.0
