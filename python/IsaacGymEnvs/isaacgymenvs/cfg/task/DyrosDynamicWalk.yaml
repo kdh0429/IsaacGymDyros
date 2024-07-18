@@ -8,7 +8,7 @@ env:
   envSpacing: 5
   episodeLength: 32 # seconds
   enableDebugVis: False
-  controlFrequencyInv: 32 #rui - [4 = 125Hz, 2 = 250Hz, 1 = 500Hz ]
+  controlFrequencyInv: 16 #rui - [16 = 31.25Hz, 8 = 62.5Hz, 4 = 125Hz, 2 = 250Hz, 1 = 500Hz ]
   
   clipActions: 1.0
 
