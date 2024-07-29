@@ -108,6 +108,7 @@ def launch_rlg_hydra(cfg: DictConfig):
 
         return runner
 
+ #rui - Load training config and build runner
     rlg_config_dict = omegaconf_to_dict(cfg.train)
 
     # convert CLI arguments into dictionory
@@ -116,12 +117,14 @@ def launch_rlg_hydra(cfg: DictConfig):
     runner.load(rlg_config_dict)
     runner.reset()
 
+#rui - Create experiment dictionary and save config
     # dump config dict
     experiment_dir = os.path.join('runs', cfg.train.params.config.name)
     os.makedirs(experiment_dir, exist_ok=True)
     with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
         f.write(OmegaConf.to_yaml(cfg))
 
+#rui - Run the training or testing 
     runner.run({
         'train': not cfg.test,
         'play': cfg.test,

@@ -161,13 +161,17 @@ class DyrosDynamicWalk(VecTask):
         self.target_data_qpos = torch.zeros_like(self.dof_pos, device = self.device, dtype = torch.float)
         self.target_data_force = torch.zeros(self.num_envs,2,device=self.device,dtype=torch.float)
         self.delay_idx_tensor = torch.zeros(self.num_envs,2,device=self.device,dtype=torch.long)
+        self.obs_delay_idx_tensor = torch.zeros(self.num_envs,2,device=self.device,dtype=torch.long)
         self.simul_len_tensor = torch.zeros(self.num_envs,2,device=self.device,dtype=torch.long)
         self.delay_idx_tensor[:,1] = 1
+        self.obs_delay_idx_tensor[:,1] = 1
         self.simul_len_tensor[:,1] = 0
         for i in range(self.num_envs):
             self.delay_idx_tensor[i,0] = i
+            self.obs_delay_idx_tensor[i,0] = i
             self.simul_len_tensor[i,0] = i
         self.action_log = torch.zeros(self.num_envs, round(0.01/self.dt)+1, 12, device= self.device , dtype=torch.float)
+        # self.obs_log = torch.zeros(self.num_envs, self.skipframe * self.obs_history * self.num_obs_skip * 2, self.num_single_step_obs, device= self.device , dtype=torch.float)
         
         
         #for perturbation
@@ -195,8 +199,10 @@ class DyrosDynamicWalk(VecTask):
         self.actions = torch.zeros(self.num_envs, self.num_action, device=self.device, dtype=torch.float, requires_grad=False)
         self.actions_pre = torch.zeros(self.num_envs, self.num_action, device=self.device, dtype=torch.float, requires_grad=False)
         
-        self.obs_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device)
-        self.action_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_action, dtype=torch.float, requires_grad=False, device=self.device)
+        self.obs_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device) #rui - (num_envs, 10 * 2 * 37)
+        self.obs_history_2000 = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe*self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device) # rui - obs_history_len * frameskip
+        self.action_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - (num_envs, 10 * 2 * 13)
+        self.action_history_2000 = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe*self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - action_history_len * frameskip
 
         self.init_done = True
        
@@ -437,7 +443,8 @@ class DyrosDynamicWalk(VecTask):
         self.gym.refresh_net_contact_force_tensor(self.sim)
         # self.gym.refresh_rigid_body_state_tensor(self.sim)
         # self.gym.refresh_force_sensor_tensor(self.sim)   
-        self.compute_humanoid_walk_observations()
+        
+        # self.compute_humanoid_walk_observations()
 
     def start_perturbation(self, ids):
         self.pert_on[ids] = True
@@ -468,6 +475,7 @@ class DyrosDynamicWalk(VecTask):
         positive_mask = self.actions[:,-1]>0
         self.actions[:,-1] = positive_mask * self.actions[:,-1] 
         self.action_history = torch.cat((self.action_history[:,self.num_actions:], self.actions),dim=-1)
+        self.action_history_2000 = torch.cat((self.action_history_2000[:,self.num_actions:], self.actions), dim=-1)
 
         self.action_torque = self.actions[:,0:-1] * self.motor_constant_scale[:,0:]*self.action_high[:12]
 
@@ -504,23 +512,23 @@ class DyrosDynamicWalk(VecTask):
             perturbation_terminate_idx = (self.perturbation_count==self.pert_duration)
             self.finish_perturbation(perturbation_terminate_idx)
             self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(forces), gymtorch.unwrap_tensor(torques), gymapi.ENV_SPACE)          
-
-        for _ in range(self.skipframe):
+        for _ in range(self.skipframe): #rui - main simulation loop
             mocap_torque = self.Kp*(self.target_data_qpos[:,:] - self.qpos_noise[:,:]) + self.Kv*(-self.dof_vel[:,:])
             upper_torque = self.Kp[12:]*(self.target_data_qpos[:,12:] - self.dof_pos[:,12:]) + self.Kv[12:]*(-self.dof_vel[:,12:])
             total_torque = torch.cat([self.action_torque,upper_torque], dim=1)
             stop_torque = self.Kp*(self.initial_dof_pos[:,:] - self.dof_pos[:,:]) + self.Kv*(-self.dof_vel[:,:])
             
             #action_log -> tensor(num_envs, time(current~past 9), dofs(33))
-            self.action_log[:,0:-1,:] = self.action_log[:,1:,:] 
+            self.action_log[:,0:-1,:] = self.action_log[:,1:,:] #NOTE - [self.num_envs, round(0.01/self.dt)+1, 12] #rui - 3D tensor moves the values from index 1 to round(0.01/self.dt)+1 -1 to indices 0 to round(0.01/self.dt)+1 -2
             self.action_log[:,-1,:] = self.action_torque
             self.simul_len_tensor[:,1] +=1
-            self.simul_len_tensor[:,1] = self.simul_len_tensor[:,1].clamp(max=round(0.01/self.dt)+1, min=0)
-            mask = self.simul_len_tensor[:,1] > self.delay_idx_tensor[:,1] 
-            bigmask = torch.zeros(self.num_envs, 12,device=self.device, dtype=torch.bool)
-            bigmask[:,:] = mask[:].unsqueeze(-1)
-            delayed_lower_torque = torch.where(bigmask, self.action_log[self.delay_idx_tensor[:,0],self.delay_idx_tensor[:,1],:], \
-                                        self.action_log[self.simul_len_tensor[:,0],-self.simul_len_tensor[:,1],:])
+            self.simul_len_tensor[:,1] = self.simul_len_tensor[:,1].clamp(max=round(0.01/self.dt)+1, min=0) #rui - clamps 2nd col between between 0 and round(0.01/self.dt)+1
+            mask = self.simul_len_tensor[:,1] > self.delay_idx_tensor[:,1] #NOTE - [self.num_envs] #rui - True if self.simul_len_tensor[:,1] is greater than self.delay_idx_tensor[:,1]
+            bigmask = torch.zeros(self.num_envs, 12,device=self.device, dtype=torch.bool) #rui - boolean bigmask shape [self.num_envs, 12] with all values set to False
+            bigmask[:,:] = mask[:].unsqueeze(-1) #NOTE - [self.num_envs, 12] #rui - broadcasting will repeat the values of mask_unsqueezed along the second dimension (12 times)
+            delayed_lower_torque = torch.where(bigmask, 
+                                               self.action_log[self.delay_idx_tensor[:,0],self.delay_idx_tensor[:,1],:], \
+                                               self.action_log[self.simul_len_tensor[:,0],-self.simul_len_tensor[:,1],:])
             self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(torch.cat([delayed_lower_torque,upper_torque], dim=1)))
             # self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(total_torque))
             # self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(stop_torque))
@@ -532,6 +540,111 @@ class DyrosDynamicWalk(VecTask):
             self.qpos_noise = self.dof_pos + torch.clamp(torch.normal(torch.zeros_like(self.dof_pos), 0.00016/3.0), min=-0.00016, max=0.00016)
             self.qvel_noise = (self.qpos_noise - self.qpos_pre) / self.dt
             self.qpos_pre = self.qpos_noise.clone()
+            
+            #************
+            #TODO - check if this matters
+            self.gym.refresh_dof_state_tensor(self.sim)
+            self.gym.refresh_actor_root_state_tensor(self.sim)
+            self.gym.refresh_net_contact_force_tensor(self.sim)
+            
+            pi =  3.14159265358979 
+            q = self.root_states[:,3:7].clone()
+            fixed_angle_x, fixed_angle_y, fixed_angle_z = quat2euler(q)
+
+            fixed_angle_x += self.quat_bias[:,0]
+            fixed_angle_y += self.quat_bias[:,1]
+            fixed_angle_z += self.quat_bias[:,2]
+
+            # lfoot_ft = self.contact_forces[:,self.left_foot_idx,:]
+            # rfoot_ft = self.contact_forces[:,self.right_foot_idx,:]
+            
+            time2idx = (self.time % self.mocap_cycle_period) / self.mocap_cycle_dt
+            phase = (self.init_mocap_data_idx + time2idx) % self.mocap_data_num / self.mocap_data_num
+            sin_phase = torch.sin(2*pi*phase) 
+            cos_phase = torch.cos(2*pi*phase)
+            vel_noise = torch.rand(self.num_envs, 6, device=self.device, dtype=torch.float)*0.05-0.025
+            obs = torch.cat((fixed_angle_x.unsqueeze(-1), fixed_angle_y.unsqueeze(-1), fixed_angle_z.unsqueeze(-1), 
+                    self.qpos_noise[:,0:12]+self.qpos_bias, 
+                    self.qvel_noise[:,0:12],
+                    sin_phase.view(-1,1),
+                    cos_phase.view(-1,1),
+                    self.target_vel[:,0].unsqueeze(-1),
+                    self.target_vel[:,1].unsqueeze(-1),
+                    self.root_states[:,7:]+vel_noise),dim=-1)
+            ''' #rui - obs shape 
+                #** 1, 1, 1:    base_orientation
+                #** 12:         q_pos
+                #** 12:         q_vel
+                #** 1, 1:       sin_phase, cos_phase
+                #** 1, 1:       target_vel_x, target_vel_y
+                #** 6:          base_lin_vel, base_ang_vel
+                tot 37
+            ''' #rui - obs shape
+            
+            diff = obs-self.obs_mean
+            normed_obs =  diff/torch.sqrt(self.obs_var + 1e-8*torch.ones_like(self.obs_var)) #rui - cur_obs [num_env, 37]
+
+            # for i in range(num_obs_skip*self.num_obs_his-1):
+            #     obs_buffer[i] = obs_buffer[i+1]
+            # obs_buffer[-1] = normed_obs.clone()
+            
+            # self.obs_history = torch.cat((self.obs_history[:,self.num_single_step_obs:], normed_obs), dim=-1) #rui - num_single_step_obs 37 ~ + 37 shifts the observation window to the right, dropping the oldest observation and making space for the new one.
+            # self.obs_log[:,0:-1,:] = self.obs_log[:,1:,:]
+            # self.obs_log[:,-1,:] = normed_obs
+            
+            # obs_mask = self.simul_len_tensor[:, 1] > self.obs_delay_idx_tensor[:, 1]
+            # obs_bigmask = torch.zeros(self.num_envs, self.num_single_step_obs, device=self.device, dtype=torch.bool)
+            # obs_bigmask[:, :] = obs_mask.unsqueeze(-1)
+            
+            # delayed_obs = torch.where(obs_bigmask, 
+            #                                    self.obs_log[self.obs_delay_idx_tensor[:,0],self.obs_delay_idx_tensor[:,1],:], \
+            #                                    self.obs_log[self.simul_len_tensor[:,0],-self.simul_len_tensor[:,1],:]) #! size num_envs, 37
+            
+            
+            
+            
+            self.obs_history_2000 = torch.cat((self.obs_history_2000[:, self.num_single_step_obs:], normed_obs), dim=-1) #! size num_envs, 37:end + 37
+            
+            
+            epi_start_idx = (self.epi_len == 0) #rui - assign boolean tensor to epi_start_idx 
+            if torch.any(epi_start_idx):
+                for i in range(self.num_obs_his * self.num_obs_skip * self.skipframe):#rui - num_obs_his 10, num_obs_skip 2, skipframe 8 on 250Hz
+                    # self.obs_history[epi_start_idx,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = normed_obs[epi_start_idx,:] #rui - epi_start_idx, num_single_step_obs(i)~num_singel_step_obs(i+1)
+                    self.obs_history_2000[epi_start_idx,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = normed_obs[epi_start_idx,:]
+
+            #*******************************************************************************for adding delay from here
+            # # obs_mask = self.simul_len_tensor[:,1] > self.obs_delay_idx_tensor[:,1] #NOTE - num_env
+            
+            # # delayed_obs = torch.where(obs_bigmask, self.obs_log[self.obs_delay_idx_tensor[:,0],self.obs_delay_idx_tensor[:,1],:], \
+            # #                             self.obs_log[self.simul_len_tensor[:,0],-self.simul_len_tensor[:,1],:]) #rui - torch.where(condition, x, y) True x False y
+             
+            for i in range(0, self.num_obs_his): #rui - num_obs_his 
+                # self.obs_buf[:,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = \
+                #     self.obs_history[:,self.num_single_step_obs*(self.num_obs_skip*(i+1)-1):self.num_single_step_obs*(self.num_obs_skip*(i+1))] #! 250Hz -> 1, 3, 5, ~, 19 -> #! 2000Hz -> 15, 31, ~, 159
+                self.obs_buf[:,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = \
+                    self.obs_history_2000[:,self.num_single_step_obs*(self.num_obs_skip*self.skipframe*(i+1)-1):self.num_single_step_obs*(self.num_obs_skip*self.skipframe*(i+1))] 
+                
+            action_start_idx = self.num_single_step_obs*self.num_obs_his
+            for i in range(self.num_obs_his-1):
+                # self.obs_buf[:,action_start_idx+self.num_actions*i:action_start_idx+self.num_actions*(i+1)] = \
+                #     self.action_history[:,self.num_actions*(self.num_obs_skip*(i+1)):self.num_actions*(self.num_obs_skip*(i+1)+1)]
+                self.obs_buf[:,action_start_idx+self.num_actions*i:action_start_idx+self.num_actions*(i+1)] = \
+                    self.action_history_2000[:,self.num_actions*(self.num_obs_skip*self.skipframe*(i+1)):self.num_actions*(self.num_obs_skip*self.skipframe*(i+1)+1)]
+                    
+#!SECTION
+            # for i in range(0, self.num_obs_his):
+            #     self.obs_buf[:,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = \
+            #         torch.where(obs_bigmask,                
+            #                     self.obs_log[self.obs_delay_idx_tensor[:,0], self.num_single_step_obs*(self.num_obs_skip*self.skipframe*(i+1)-1) + self.obs_delay_idx_tensor[:,1],:], \
+            #                     self.obs_log[self.simul_len_tensor[:,0], self.num_single_step_obs*(self.num_obs_skip*self.skipframe*(i+1)-1) -self.simul_len_tensor[:,1],:]) #! size of num_envs, 37
+          
+
+            
+            #************
+            
+            #time update 2000Hz
+            self.time += self.dt_policy/self.skipframe
+            
 
         self.epi_len[:] +=1
         
@@ -541,7 +654,7 @@ class DyrosDynamicWalk(VecTask):
         #observation values update
         
         #time update
-        self.time += self.dt_policy
+        # self.time += self.dt_policy
         self.time += 5*self.dt_policy*self.actions[:,-1].unsqueeze(-1)
 
     def post_physics_step(self):
@@ -665,6 +778,8 @@ class DyrosDynamicWalk(VecTask):
         self.action_log[env_ids] = torch.zeros(1+round(0.01/self.dt),12,device=self.device,dtype=torch.float,requires_grad=False)
         self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.01 /self.dt),size=(len(env_ids),1),\
                                                         device=self.device,requires_grad=False).squeeze(-1)
+        self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.01 /self.dt),size=(len(env_ids),1),\
+                                                        device=self.device,requires_grad=False).squeeze(-1)
         self.contact_reward_mean[env_ids] = self.contact_reward_sum[env_ids] /  self.epi_len[env_ids]
         self.contact_reward_sum[env_ids] = 0
         #low 5, high 12 for 2000 / 250Hz
@@ -786,21 +901,31 @@ class DyrosDynamicWalk(VecTask):
                 self.target_vel[:,0].unsqueeze(-1),
                 self.target_vel[:,1].unsqueeze(-1),
                 self.root_states[:,7:]+vel_noise),dim=-1)
+        ''' #rui - obs shape 
+            #** 1, 1, 1:    base_orientation
+            #** 12:         q_pos
+            #** 12:         q_vel
+            #** 1, 1:       sin_phase, cos_phase
+            #** 1, 1:       target_vel_x, target_vel_y
+            #** 6:          base_lin_vel, base_ang_vel
+            tot 37
+        ''' #rui - obs shape
         
         diff = obs-self.obs_mean
-        normed_obs =  diff/torch.sqrt(self.obs_var + 1e-8*torch.ones_like(self.obs_var))
+        normed_obs =  diff/torch.sqrt(self.obs_var + 1e-8*torch.ones_like(self.obs_var)) #rui - cur_obs [num_env, 37]
 
         # for i in range(num_obs_skip*self.num_obs_his-1):
         #     obs_buffer[i] = obs_buffer[i+1]
         # obs_buffer[-1] = normed_obs.clone()
         
-        self.obs_history = torch.cat((self.obs_history[:,self.num_single_step_obs:], normed_obs), dim=-1)
+        self.obs_history = torch.cat((self.obs_history[:,self.num_single_step_obs:], normed_obs), dim=-1) #rui - num_single_step_obs 37 ~ + 37 
 
-        epi_start_idx = (self.epi_len == 0)
-        for i in range(self.num_obs_his*self.num_obs_skip):
-            self.obs_history[epi_start_idx,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = normed_obs[epi_start_idx,:]
+        epi_start_idx = (self.epi_len == 0) #rui - assign boolean tensor to epi_start_idx 
+        for i in range(self.num_obs_his * self.num_obs_skip * self.skipframe):#rui - num_obs_his 10, num_obs_skip 2, skipframe 8 on 250Hz
+            self.obs_history[epi_start_idx,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = normed_obs[epi_start_idx,:] #rui - epi_start_idx, num_single_step_obs(i)~num_singel_step_obs(i+1)
 
-        for i in range(0, self.num_obs_his):
+        #*******************************************************************************for adding delay from here
+        for i in range(0, self.num_obs_his): #rui - num_obs_his 10 
             self.obs_buf[:,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = \
                 self.obs_history[:,self.num_single_step_obs*(self.num_obs_skip*(i+1)-1):self.num_single_step_obs*(self.num_obs_skip*(i+1))]
        
