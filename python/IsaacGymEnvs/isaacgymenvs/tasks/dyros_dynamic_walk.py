@@ -201,8 +201,13 @@ class DyrosDynamicWalk(VecTask):
         
         self.obs_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device) #rui - (num_envs, 10 * 2 * 37)
         self.obs_history_2000 = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe*self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device) # rui - obs_history_len * frameskip
+        
+        self.obs_history_2000_3D = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe, self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device) # rui - obs_history_len * frameskip
+        
         self.action_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - (num_envs, 10 * 2 * 13)
         self.action_history_2000 = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe*self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - action_history_len * frameskip
+        
+        self.action_history_2000_3D = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe, self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - action_history_len * frameskip
 
         self.init_done = True
        
@@ -476,8 +481,11 @@ class DyrosDynamicWalk(VecTask):
         self.actions[:,-1] = positive_mask * self.actions[:,-1] 
         self.action_history = torch.cat((self.action_history[:,self.num_actions:], self.actions),dim=-1)
         self.action_history_2000 = torch.cat((self.action_history_2000[:,self.num_actions:], self.actions), dim=-1)
-
+        self.action_3D = self.actions.unsqueeze(1)  # Reshape to (num_envs, 1, 13)
+        self.action_history_2000_3D = torch.cat((self.action_history_2000_3D[:, 1:, :], self.action_3D), dim=1)
+        
         self.action_torque = self.actions[:,0:-1] * self.motor_constant_scale[:,0:]*self.action_high[:12]
+        
 
         # new_vel_idx = torch.nonzero((self.epi_len[:] % (self.max_episode_length/4)) == (self.max_episode_length/4-1))
         # self.vel_change_duration[new_vel_idx] = torch.randint(low=1, high=int(1/self.dt_policy), size=(len(new_vel_idx),1),device=self.device, requires_grad=False)
@@ -524,18 +532,24 @@ class DyrosDynamicWalk(VecTask):
             self.simul_len_tensor[:,1] +=1
             self.simul_len_tensor[:,1] = self.simul_len_tensor[:,1].clamp(max=round(0.01/self.dt)+1, min=0) #rui - clamps 2nd col between between 0 and round(0.01/self.dt)+1
             mask = self.simul_len_tensor[:,1] > self.delay_idx_tensor[:,1] #NOTE - [self.num_envs] #rui - True if self.simul_len_tensor[:,1] is greater than self.delay_idx_tensor[:,1]
+            # print(" self.delay_idx_tensor[:,1]: ",  self.delay_idx_tensor[:,1])
             bigmask = torch.zeros(self.num_envs, 12,device=self.device, dtype=torch.bool) #rui - boolean bigmask shape [self.num_envs, 12] with all values set to False
             bigmask[:,:] = mask[:].unsqueeze(-1) #NOTE - [self.num_envs, 12] #rui - broadcasting will repeat the values of mask_unsqueezed along the second dimension (12 times)
             delayed_lower_torque = torch.where(bigmask, 
-                                               self.action_log[self.delay_idx_tensor[:,0],self.delay_idx_tensor[:,1],:], \
+                                               self.action_log[self.delay_idx_tensor[:,0],-self.delay_idx_tensor[:,1],:], \
                                                self.action_log[self.simul_len_tensor[:,0],-self.simul_len_tensor[:,1],:])
             self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(torch.cat([delayed_lower_torque,upper_torque], dim=1)))
             # self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(total_torque))
             # self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(stop_torque))
             # self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(mocap_torque))
-            
+            # print("self.simul_len_tensor[:,1]: ",self.simul_len_tensor[:,1])
+            # print("self.delay_idx_tensor[:,1]: ", self.delay_idx_tensor[:,1])
+            # print("mask: ", mask)
             self.gym.simulate(self.sim)
             self.gym.refresh_dof_state_tensor(self.sim)
+            self.gym.refresh_actor_root_state_tensor(self.sim)
+            self.gym.refresh_net_contact_force_tensor(self.sim)
+            
             # self.qpos_noise = self.dof_pos + torch.clamp(0.00016/3.0*torch.randn_like(self.dof_pos) , min=-0.00016, max=0.00016)
             self.qpos_noise = self.dof_pos + torch.clamp(torch.normal(torch.zeros_like(self.dof_pos), 0.00016/3.0), min=-0.00016, max=0.00016)
             self.qvel_noise = (self.qpos_noise - self.qpos_pre) / self.dt
@@ -543,9 +557,7 @@ class DyrosDynamicWalk(VecTask):
             
             #************
             #TODO - check if this matters
-            self.gym.refresh_dof_state_tensor(self.sim)
-            self.gym.refresh_actor_root_state_tensor(self.sim)
-            self.gym.refresh_net_contact_force_tensor(self.sim)
+            
             
             pi =  3.14159265358979 
             q = self.root_states[:,3:7].clone()
@@ -600,45 +612,125 @@ class DyrosDynamicWalk(VecTask):
             #                                    self.obs_log[self.obs_delay_idx_tensor[:,0],self.obs_delay_idx_tensor[:,1],:], \
             #                                    self.obs_log[self.simul_len_tensor[:,0],-self.simul_len_tensor[:,1],:]) #! size num_envs, 37
             
+            # self.obs_history_2000 = torch.cat((self.obs_history_2000[:, self.num_single_step_obs:], normed_obs), dim=-1) #! size num_envs, 37:end + 37
             
-            
-            
-            self.obs_history_2000 = torch.cat((self.obs_history_2000[:, self.num_single_step_obs:], normed_obs), dim=-1) #! size num_envs, 37:end + 37
-            
+            normed_obs_3D = normed_obs.unsqueeze(1)  # Reshape to (num_envs, 1, 37)
+            self.obs_history_2000_3D = torch.cat((self.obs_history_2000_3D[:, 1:, :], normed_obs_3D), dim=1) # Concatenate along the second dimension (num_envs, 40, 37)
             
             epi_start_idx = (self.epi_len == 0) #rui - assign boolean tensor to epi_start_idx 
+            # if torch.any(epi_start_idx):
+            #     for i in range(self.num_obs_his * self.num_obs_skip * self.skipframe):#rui - num_obs_his 10, num_obs_skip 2, skipframe 8 on 250Hz
+            #         # self.obs_history[epi_start_idx,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = normed_obs[epi_start_idx,:] #rui - epi_start_idx, num_single_step_obs(i)~num_singel_step_obs(i+1)
+            #         self.obs_history_2000[epi_start_idx,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = normed_obs[epi_start_idx,:]
+            
             if torch.any(epi_start_idx):
-                for i in range(self.num_obs_his * self.num_obs_skip * self.skipframe):#rui - num_obs_his 10, num_obs_skip 2, skipframe 8 on 250Hz
-                    # self.obs_history[epi_start_idx,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = normed_obs[epi_start_idx,:] #rui - epi_start_idx, num_single_step_obs(i)~num_singel_step_obs(i+1)
-                    self.obs_history_2000[epi_start_idx,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = normed_obs[epi_start_idx,:]
+                # Iterate over the range to set the values in the history
+                for i in range(self.num_obs_his * self.num_obs_skip * self.skipframe):
+                    # Set the appropriate slice in obs_history_2000_3D
+                    self.obs_history_2000_3D[epi_start_idx, i, :] = normed_obs[epi_start_idx, :]
 
             #*******************************************************************************for adding delay from here
             # # obs_mask = self.simul_len_tensor[:,1] > self.obs_delay_idx_tensor[:,1] #NOTE - num_env
             
             # # delayed_obs = torch.where(obs_bigmask, self.obs_log[self.obs_delay_idx_tensor[:,0],self.obs_delay_idx_tensor[:,1],:], \
             # #                             self.obs_log[self.simul_len_tensor[:,0],-self.simul_len_tensor[:,1],:]) #rui - torch.where(condition, x, y) True x False y
-             
-            for i in range(0, self.num_obs_his): #rui - num_obs_his 
-                # self.obs_buf[:,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = \
-                #     self.obs_history[:,self.num_single_step_obs*(self.num_obs_skip*(i+1)-1):self.num_single_step_obs*(self.num_obs_skip*(i+1))] #! 250Hz -> 1, 3, 5, ~, 19 -> #! 2000Hz -> 15, 31, ~, 159
-                self.obs_buf[:,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = \
-                    self.obs_history_2000[:,self.num_single_step_obs*(self.num_obs_skip*self.skipframe*(i+1)-1):self.num_single_step_obs*(self.num_obs_skip*self.skipframe*(i+1))] 
+            #! obs no delay
+            # for i in range(0, self.num_obs_his): #rui - num_obs_his 
+            #     # self.obs_buf[:,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = \
+            #     #     self.obs_history[:,self.num_single_step_obs*(self.num_obs_skip*(i+1)-1):self.num_single_step_obs*(self.num_obs_skip*(i+1))] #! 250Hz -> 1, 3, 5, ~, 19 -> #! 2000Hz -> 15, 31, ~, 159
+            #     self.obs_buf[:,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = \
+            #         self.obs_history_2000[:,self.num_single_step_obs*(self.num_obs_skip*self.skipframe*(i+1)-1):self.num_single_step_obs*(self.num_obs_skip*self.skipframe*(i+1))] 
                 
-            action_start_idx = self.num_single_step_obs*self.num_obs_his
-            for i in range(self.num_obs_his-1):
-                # self.obs_buf[:,action_start_idx+self.num_actions*i:action_start_idx+self.num_actions*(i+1)] = \
-                #     self.action_history[:,self.num_actions*(self.num_obs_skip*(i+1)):self.num_actions*(self.num_obs_skip*(i+1)+1)]
-                self.obs_buf[:,action_start_idx+self.num_actions*i:action_start_idx+self.num_actions*(i+1)] = \
-                    self.action_history_2000[:,self.num_actions*(self.num_obs_skip*self.skipframe*(i+1)):self.num_actions*(self.num_obs_skip*self.skipframe*(i+1)+1)]
-                    
-#!SECTION
+            # action_start_idx = self.num_single_step_obs*self.num_obs_his
+            # for i in range(self.num_obs_his-1):
+            #     # self.obs_buf[:,action_start_idx+self.num_actions*i:action_start_idx+self.num_actions*(i+1)] = \
+            #     #     self.action_history[:,self.num_actions*(self.num_obs_skip*(i+1)):self.num_actions*(self.num_obs_skip*(i+1)+1)]
+            #     self.obs_buf[:,action_start_idx+self.num_actions*i:action_start_idx+self.num_actions*(i+1)] = \
+            #         self.action_history_2000[:,self.num_actions*(self.num_obs_skip*self.skipframe*(i+1)):self.num_actions*(self.num_obs_skip*self.skipframe*(i+1)+1)]
+            #! obs no delay
+            
+            # print("self.obs_buf.shape, ", self.obs_buf.shape)
+            # print("self.obs_history_2000.shape, ", self.obs_history_2000.shape)
+            # print("self.action_history_2000.shape, ", self.action_history_2000.shape)
+            
             # for i in range(0, self.num_obs_his):
             #     self.obs_buf[:,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = \
             #         torch.where(obs_bigmask,                
             #                     self.obs_log[self.obs_delay_idx_tensor[:,0], self.num_single_step_obs*(self.num_obs_skip*self.skipframe*(i+1)-1) + self.obs_delay_idx_tensor[:,1],:], \
             #                     self.obs_log[self.simul_len_tensor[:,0], self.num_single_step_obs*(self.num_obs_skip*self.skipframe*(i+1)-1) -self.simul_len_tensor[:,1],:]) #! size of num_envs, 37
-          
+            
+            #! obs obs delay
+            obs_mask = self.simul_len_tensor[:, 1] > self.obs_delay_idx_tensor[:, 1]
+            obs_bigmask_obs = torch.zeros(self.num_envs, self.num_single_step_obs, device=self.device, dtype=torch.bool)
+            obs_bigmask_obs[:, :] = obs_mask.unsqueeze(-1)
+            # print("obs_buf.shape, ", self.obs_buf.shape)
+            # print("self.obs_delay_idx_tensor[:,1].shape, ", self.obs_delay_idx_tensor[:,1].shape)
+            
+            for i in range(0, self.num_obs_his):
+                self.obs_buf[:, self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = \
+                    torch.where(obs_bigmask_obs, 
+                                self.obs_history_2000_3D[self.obs_delay_idx_tensor[:,0],  torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device) - self.obs_delay_idx_tensor[:,1], :], \
+                                self.obs_history_2000_3D[self.simul_len_tensor[:,0], torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device) - self.simul_len_tensor[:,1], :]) #! size num_envs, 37
+            #! obs obs delay
+                    
+            # print("self.obs_buf[:, self.num_single_step_obs*i:self.num_single_step_obs*(i+1)]: ", self.obs_buf[:, self.num_single_step_obs*i:self.num_single_step_obs*(i+1)].shape)
+            # print("where: ", torch.where(obs_bigmask_obs, 
+            #             self.obs_history_2000_3D[self.obs_delay_idx_tensor[:,0],  torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device)  + self.obs_delay_idx_tensor[:,1], :], \
+            #             self.obs_history_2000_3D[self.simul_len_tensor[:,0], torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device) - self.simul_len_tensor[:,1], :])[0])
+                        
+                        
+            # Add debugging prints to see the values of the tensors involved
+            # print("obs_bigmask_obs: ", obs_bigmask_obs)
+            # print("self.obs_delay_idx_tensor[:, 0]: ", self.obs_delay_idx_tensor[:, 0])
+            # print("self.obs_delay_idx_tensor[:, 1]: ", self.obs_delay_idx_tensor[:, 1])
+            # print("torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device): ", torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device))
+            # print("add: ", torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device) + self.obs_delay_idx_tensor[:, 1])
+            
+            # print("sub: ", torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device) -self.simul_len_tensor[:,1])
+            
+            # print("self.obs_history_2000_3D 1: ", self.obs_history_2000_3D[self.obs_delay_idx_tensor[:,0],  torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device)  - self.obs_delay_idx_tensor[:,1], :])
+            # # print("self.obs_history_2000_3D 1: ", self.obs_history_2000_3D[self.obs_delay_idx_tensor[:,0],  self.obs_delay_idx_tensor[:,1], :])
+            
+            # print("self.obs_history_2000_3D 2: ", self.obs_history_2000_3D[self.simul_len_tensor[:,0], torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device) -1 * self.simul_len_tensor[:,1], :])
+            
+            # print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+            # print("self.simul_len_tensor: ", self.simul_len_tensor)
+            # print("self.obs_history_2000_3D.shape: ", self.obs_history_2000_3D.shape)
+            # print("torch.full shape: ", torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device).shape)
 
+            # Now the problematic line
+            # print("where: ", torch.where(obs_bigmask_obs, 
+            #     self.obs_history_2000_3D[self.obs_delay_idx_tensor[:,0],  
+            #     torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device) - self.obs_delay_idx_tensor[:,1], :], 
+            #     self.obs_history_2000_3D[self.simul_len_tensor[:,0], 
+            #     torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device) - self.simul_len_tensor[:,1], :]))
+            
+            # print("self.num_single_step_obs*i:self.num_single_step_obs*(i+1): ", self.num_single_step_obs*i)
+            # print("self.num_single_step_obs*(i+1): ", self.num_single_step_obs*(i+1))
+            # print("(self.num_obs_skip*self.skipframe*(i+1))-1: ", (self.num_obs_skip*self.skipframe*(i+1))-1)
+            # print("print(tensor[0].item())")
+            # print("self.obs_delay_idx_tensor[:,1]: ", self.obs_delay_idx_tensor[:,1][0].item())
+            # print("self.obs_delay_idx_tensor[:,1]:shape ", self.obs_delay_idx_tensor[:,1].shape)
+            # print("- self.simul_len_tensor[:,1]: ", - self.simul_len_tensor[:,1][0].item())
+            # print("- self.simul_len_tensor[:,1]:shape ", self.simul_len_tensor[:,1].shape)
+            # print("torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device): ", torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device).shape)
+            
+            #! action obs delay
+            action_start_idx = self.num_single_step_obs*self.num_obs_his
+            obs_bigmask_action = torch.zeros(self.num_envs, self.num_actions, device=self.device, dtype=torch.bool)
+            obs_bigmask_action[:, :] = obs_mask.unsqueeze(-1)
+            for i in range(0, self.num_obs_his-1):
+                
+                self.obs_buf[:, action_start_idx+self.num_actions*i:action_start_idx+self.num_actions*(i+1)] = \
+                    torch.where(obs_bigmask_action, 
+                                self.action_history_2000_3D[self.obs_delay_idx_tensor[:,0], torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1)), device=self.device) - self.obs_delay_idx_tensor[:,1], :], \
+                                self.action_history_2000_3D[self.simul_len_tensor[:,0], torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1)), device=self.device) - self.simul_len_tensor[:,1], :])
+            #! action obs delay
+            
+                # print("self.obs_buf[:, action_start_idx+self.num_action*i:action_start_idx+self.num_action*(i+1)]: ", self.obs_buf[:, action_start_idx+self.num_action*i:action_start_idx+self.num_action*(i+1)].shape)
+                # print("where: ", torch.where(obs_bigmask_action, 
+                #                 self.action_history_2000_3D[self.obs_delay_idx_tensor[:,0], torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1)), device=self.device) + self.obs_delay_idx_tensor[:,1], :], \
+                #                 self.action_history_2000_3D[self.simul_len_tensor[:,0], torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1)), device=self.device) - self.simul_len_tensor[:,1], :]).shape)
             
             #************
             
@@ -672,7 +764,7 @@ class DyrosDynamicWalk(VecTask):
         if len(env_ids) > 0:
             self.reset_idx(env_ids)
 
-        self.compute_observations()
+        # self.compute_observations()
         #late update
         self.pre_joint_velocity_states = self.dof_vel.clone()
         self.action_torque_pre = self.action_torque.clone()
@@ -777,9 +869,10 @@ class DyrosDynamicWalk(VecTask):
 
         self.action_log[env_ids] = torch.zeros(1+round(0.01/self.dt),12,device=self.device,dtype=torch.float,requires_grad=False)
         self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.01 /self.dt),size=(len(env_ids),1),\
-                                                        device=self.device,requires_grad=False).squeeze(-1)
+                                                        device=self.device,requires_grad=False).squeeze(-1) #rui 1~6
         self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.01 /self.dt),size=(len(env_ids),1),\
-                                                        device=self.device,requires_grad=False).squeeze(-1)
+                                                        device=self.device,requires_grad=False).squeeze(-1) #rui 1~6
+        
         self.contact_reward_mean[env_ids] = self.contact_reward_sum[env_ids] /  self.epi_len[env_ids]
         self.contact_reward_sum[env_ids] = 0
         #low 5, high 12 for 2000 / 250Hz
@@ -796,6 +889,8 @@ class DyrosDynamicWalk(VecTask):
         #for observation history buffer
         self.obs_history[env_ids,:] = 0
         self.action_history[env_ids,:] = 0
+        self.obs_history_2000_3D[env_ids,:] = 0
+        self.action_history_2000_3D[env_ids,:] = 0
 
     def _update_terrain_curriculum(self, env_ids):
         """ Implements the game-inspired curriculum.
