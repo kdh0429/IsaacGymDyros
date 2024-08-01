@@ -170,7 +170,7 @@ class DyrosDynamicWalk(VecTask):
             self.delay_idx_tensor[i,0] = i
             self.obs_delay_idx_tensor[i,0] = i
             self.simul_len_tensor[i,0] = i
-        self.action_log = torch.zeros(self.num_envs, round(0.01/self.dt)+1, 12, device= self.device , dtype=torch.float)
+        self.action_log = torch.zeros(self.num_envs, round(0.03/self.dt)+1, 12, device= self.device , dtype=torch.float)
         # self.obs_log = torch.zeros(self.num_envs, self.skipframe * self.obs_history * self.num_obs_skip * 2, self.num_single_step_obs, device= self.device , dtype=torch.float)
         
         
@@ -530,7 +530,7 @@ class DyrosDynamicWalk(VecTask):
             self.action_log[:,0:-1,:] = self.action_log[:,1:,:] #NOTE - [self.num_envs, round(0.01/self.dt)+1, 12] #rui - 3D tensor moves the values from index 1 to round(0.01/self.dt)+1 -1 to indices 0 to round(0.01/self.dt)+1 -2
             self.action_log[:,-1,:] = self.action_torque
             self.simul_len_tensor[:,1] +=1
-            self.simul_len_tensor[:,1] = self.simul_len_tensor[:,1].clamp(max=round(0.01/self.dt)+1, min=0) #rui - clamps 2nd col between between 0 and round(0.01/self.dt)+1
+            self.simul_len_tensor[:,1] = self.simul_len_tensor[:,1].clamp(max=round(0.03/self.dt)+1, min=0) #rui - clamps 2nd col between between 0 and round(0.01/self.dt)+1 1~16
             mask = self.simul_len_tensor[:,1] > self.delay_idx_tensor[:,1] #NOTE - [self.num_envs] #rui - True if self.simul_len_tensor[:,1] is greater than self.delay_idx_tensor[:,1]
             # print(" self.delay_idx_tensor[:,1]: ",  self.delay_idx_tensor[:,1])
             bigmask = torch.zeros(self.num_envs, 12,device=self.device, dtype=torch.bool) #rui - boolean bigmask shape [self.num_envs, 12] with all values set to False
@@ -867,12 +867,11 @@ class DyrosDynamicWalk(VecTask):
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
 
-        self.action_log[env_ids] = torch.zeros(1+round(0.01/self.dt),12,device=self.device,dtype=torch.float,requires_grad=False)
-        self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.01 /self.dt),size=(len(env_ids),1),\
-                                                        device=self.device,requires_grad=False).squeeze(-1) #rui 1~6
-        self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.01 /self.dt),size=(len(env_ids),1),\
-                                                        device=self.device,requires_grad=False).squeeze(-1) #rui 1~6
-        
+        self.action_log[env_ids] = torch.zeros(1+round(0.03/self.dt),12,device=self.device,dtype=torch.float,requires_grad=False)
+        self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
+                                                        device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
+        self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
+                                                        device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
         self.contact_reward_mean[env_ids] = self.contact_reward_sum[env_ids] /  self.epi_len[env_ids]
         self.contact_reward_sum[env_ids] = 0
         #low 5, high 12 for 2000 / 250Hz
