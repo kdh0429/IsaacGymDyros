@@ -32,3 +32,6 @@ python train.py task=DyrosDynamicWalk checkpoint=runs/DyrosDynamicWalk/nn/DyrosD
    ```bash
    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/$USER_NAME/anaconda3/envs/rlgpu4/lib
    ```
+
+## General Training Recipes for DYROS
+Refer to [General Recipe](./GeneralTrainingRecipes.md) for DYROS
