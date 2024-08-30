@@ -32,7 +32,8 @@ class DyrosDynamicWalk(VecTask):
         self.debug_viz = self.cfg["env"]["enableDebugVis"]
 
         self.max_episode_length_s = self.cfg["env"]["episodeLength"]
-        self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * self.cfg["env"].get("controlFrequencyInv", 8))
+        # self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * self.cfg["env"].get("controlFrequencyInv", 8))
+        self.max_episode_length = self.max_episode_length_s / self.cfg["sim"].get("dt")
         self.num_obs_his = self.cfg["env"]["NumHis"]
         self.num_obs_skip = self.cfg["env"]["NumSkip"]
         self.initial_height = self.cfg["env"]["initialHieght"]
@@ -119,11 +120,11 @@ class DyrosDynamicWalk(VecTask):
         self.mocap_cycle_dt = 0.0005
         self.mocap_cycle_period = self.mocap_data_num * self.mocap_cycle_dt
         self.time = torch.zeros(self.num_envs,1, device=self.device, dtype=torch.float)
-        self.dt = self.cfg["sim"].get("dt") #rui - dt: 0.002
-        self.skipframe = self.cfg["env"].get("controlFrequencyInv", 8) #rui - controlFrequencyInv: 2
-        self.dt_policy = self.dt*self.skipframe #rui - dt_policy: 0.004 -> 250Hz, 0.008 -> 125Hz
+        self.dt = self.cfg["sim"].get("dt") #rui - dt: 0.002 -> changed to 0.0005 [2000Hz]
+        self.skipframe = self.cfg["env"].get("controlFrequencyInv", 8) #rui - controlFrequencyInv: 8 [250Hz]
+        self.dt_policy = self.dt*self.skipframe #rui - dt_policy: 0.0005 * 8 = 0.004 [250Hz]
         self.policy_freq_scale = 1/(self.dt_policy * 250) # e.g. 100/250 #rui - 1 / (0.004 * 250) = 1.0[250Hz], 1 / (0.008 * 250) = 0.5[125Hz]
-        self.sim_time_scale = self.dt / 0.0005 # e.g. 0.002 / 0.0005 (500Hz, 2000Hz) #rui - 0.002 / 0.0005 = 4.0  
+        # self.sim_time_scale = self.dt / 0.0005 # e.g. 0.002 / 0.0005 (500Hz, 2000Hz) #rui - 0.002 / 0.0005 = 4.0  -> 2000Hz, 
 
         #for observation 
         self.qpos_noise = torch.zeros_like(self.dof_pos)
