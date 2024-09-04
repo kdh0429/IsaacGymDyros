@@ -32,8 +32,9 @@ class DyrosDynamicWalk(VecTask):
         self.debug_viz = self.cfg["env"]["enableDebugVis"]
 
         self.max_episode_length_s = self.cfg["env"]["episodeLength"]
-        # self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * self.cfg["env"].get("controlFrequencyInv", 8))
-        self.max_episode_length = self.max_episode_length_s / self.cfg["sim"].get("dt")
+        # self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * self.cfg["env"].get("controlFrequencyInv", 8)) #! 32/(0.002 x 2) = 8000
+        self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * 2) #! 32/(0.002 * 2) = 8000 
+                
         self.num_obs_his = self.cfg["env"]["NumHis"]
         self.num_obs_skip = self.cfg["env"]["NumSkip"]
         self.initial_height = self.cfg["env"]["initialHieght"]
@@ -120,9 +121,9 @@ class DyrosDynamicWalk(VecTask):
         self.mocap_cycle_dt = 0.0005
         self.mocap_cycle_period = self.mocap_data_num * self.mocap_cycle_dt
         self.time = torch.zeros(self.num_envs,1, device=self.device, dtype=torch.float)
-        self.dt = self.cfg["sim"].get("dt") #rui - dt: 0.002 -> changed to 0.0005 [2000Hz]
-        self.skipframe = self.cfg["env"].get("controlFrequencyInv", 8) #rui - controlFrequencyInv: 8 [250Hz]
-        self.dt_policy = self.dt*self.skipframe #rui - dt_policy: 0.0005 * 8 = 0.004 [250Hz]
+        self.dt = self.cfg["sim"].get("dt") #rui - dt: 0.002 [500Hz]
+        self.skipframe = self.cfg["env"].get("controlFrequencyInv", 8) #rui - controlFrequencyInv: 2 [250Hz]
+        self.dt_policy = self.dt*self.skipframe #rui - dt_policy: 0.002 * 2 = 0.004 [250Hz]
         self.policy_freq_scale = 1/(self.dt_policy * 250) # e.g. 100/250 #rui - 1 / (0.004 * 250) = 1.0[250Hz], 1 / (0.008 * 250) = 0.5[125Hz]
         # self.sim_time_scale = self.dt / 0.0005 # e.g. 0.002 / 0.0005 (500Hz, 2000Hz) #rui - 0.002 / 0.0005 = 4.0  -> 2000Hz, 
 
@@ -455,7 +456,8 @@ class DyrosDynamicWalk(VecTask):
     def start_perturbation(self, ids):
         self.pert_on[ids] = True
         self.impulse[ids] = torch.randint(low=50, high=250, size=(len(ids),1),device=self.device, requires_grad=False)
-        self.pert_duration[ids] = torch.randint(low=int(0.1/self.dt_policy), high=int(1/self.dt_policy), size=(len(ids),1),device=self.device, requires_grad=False)#.squeeze(-1) # Unit: episode length
+        # self.pert_duration[ids] = torch.randint(low=int(0.1/self.dt_policy), high=int(1/self.dt_policy), size=(len(ids),1),device=self.device, requires_grad=False)#.squeeze(-1) # Unit: episode length
+        self.pert_duration[ids] = torch.randint(low=int(25), high=int(250), size=(len(ids),1),device=self.device, requires_grad=False)#.squeeze(-1) # Unit: episode length
         self.magnitude[ids] = self.impulse[ids] / (self.pert_duration[ids] * self.dt_policy)
         self.phase[ids] = torch.rand(len(ids),1,device=self.device, dtype=torch.float, requires_grad=False)*2*3.14159265358979
 
@@ -507,13 +509,15 @@ class DyrosDynamicWalk(VecTask):
         #                                   self.start_target_vel[:,1] + (self.final_target_vel[:,1]-self.start_target_vel[:,1]) * self.cur_vel_change_duration / self.vel_change_duration, \
         #                                   self.target_vel[:,1])
         
-        if (self.perturb and (torch.mean(self.epi_len_log[:]) > self.max_episode_length - 8/self.dt_policy) and (torch.mean(self.contact_reward_mean[:]) > 0.165)):
+        # if (self.perturb and (torch.mean(self.epi_len_log[:]) > self.max_episode_length - 8/self.dt_policy) and (torch.mean(self.contact_reward_mean[:]) > 0.165)): #! self.dt_policy = 0.004 [250Hz]
+        if (self.perturb and (torch.mean(self.epi_len_log[:]) > self.max_episode_length - 2000) and (torch.mean(self.contact_reward_mean[:]) > 0.165)): #! self.dt_policy = 0.004 [250Hz]
             self.perturb_start[:, 0] = True
         # self.perturb_start[:, 0] = True
         if (self.perturb_start[0, 0] == True):
             forces = torch.zeros((self.num_envs, self.num_bodies, 3), device=self.device, dtype=torch.float)
             torques = torch.zeros((self.num_envs, self.num_bodies, 3), device=self.device, dtype=torch.float)
-            perturbation_start_idx = torch.nonzero((self.epi_len[:]%(8/self.dt_policy)==self.perturb_timing[:]))
+            # perturbation_start_idx = torch.nonzero((self.epi_len[:]%(8/self.dt_policy)==self.perturb_timing[:]))
+            perturbation_start_idx = torch.nonzero((self.epi_len[:]%(2000)==self.perturb_timing[:])) #! perturb should be same per step
             self.start_perturbation(perturbation_start_idx)
             self.perturbation_count = torch.where(self.pert_on,self.perturbation_count+1,self.perturbation_count)
             forces[:,self.pelvis_idx,0] = torch.where(self.pert_on,self.magnitude[:]*torch.cos(self.phase[:]),forces[:,-1,0])
@@ -546,7 +550,7 @@ class DyrosDynamicWalk(VecTask):
             # print("self.simul_len_tensor[:,1]: ",self.simul_len_tensor[:,1])
             # print("self.delay_idx_tensor[:,1]: ", self.delay_idx_tensor[:,1])
             # print("mask: ", mask)
-            self.gym.simulate(self.sim)
+            self.gym.simulate(self.sim) #! simulate
             self.gym.refresh_dof_state_tensor(self.sim)
             self.gym.refresh_actor_root_state_tensor(self.sim)
             self.gym.refresh_net_contact_force_tensor(self.sim)
@@ -739,7 +743,7 @@ class DyrosDynamicWalk(VecTask):
             self.time += self.dt_policy/self.skipframe
             
 
-        self.epi_len[:] +=1
+        self.epi_len[:] +=1 #! pre physics step 1번마다
         
 
         self.render()
@@ -884,7 +888,8 @@ class DyrosDynamicWalk(VecTask):
         #for perturbation
         self.perturbation_count[env_ids] = 0
         self.pert_on[env_ids] = False
-        self.perturb_timing[env_ids] = torch.randint(low=0, high=int(8/self.dt_policy), size=(len(env_ids),1),device=self.device, requires_grad=False).squeeze(-1) 
+        # self.perturb_timing[env_ids] = torch.randint(low=0, high=int(8/self.dt_policy), size=(len(env_ids),1),device=self.device, requires_grad=False).squeeze(-1) 
+        self.perturb_timing[env_ids] = torch.randint(low=0, high=int(2000), size=(len(env_ids),1),device=self.device, requires_grad=False).squeeze(-1) 
 
         #for observation history buffer
         self.obs_history[env_ids,:] = 0

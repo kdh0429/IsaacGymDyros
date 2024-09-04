@@ -307,7 +307,7 @@ class VecTask(Env):
         action_tensor = torch.clamp(actions, -self.clip_actions, self.clip_actions)
         # apply actions
         #time1 = time()
-        self.pre_physics_step(action_tensor)
+        self.pre_physics_step(action_tensor) #! simulation done here
         #time2 = time()
         #print('pre step', time2 - time1)
         '''

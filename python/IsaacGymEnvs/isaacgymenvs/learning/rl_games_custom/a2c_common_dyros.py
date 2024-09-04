@@ -466,7 +466,7 @@ class A2CBase:
 
     def env_step(self, actions):
         actions = self.preprocess_actions(actions)
-        obs, rewards, dones, infos = self.vec_env.step(actions)
+        obs, rewards, dones, infos = self.vec_env.step(actions) #! vec_task.py 의 step func
 
         if self.is_tensor_obses:
             if self.value_size == 1:
@@ -968,7 +968,7 @@ class ContinuousA2CBase(A2CBase):
             dataset_dict['rnn_masks'] = rnn_masks
             self.central_value_net.update_dataset(dataset_dict)
 
-    def train(self):
+    def train(self): #! train function
         self.init_tensors()
         self.last_mean_rewards = -100500
         start_time = time.time()
