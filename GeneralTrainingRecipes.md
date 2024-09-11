@@ -4,6 +4,7 @@
    - Typically, 2-3 layers with 256 or 512 units are used.
 ### **MDP-related considerations:**
    - Reward tuning: If the reward is not well-tuned.
+      - Early termination is a huge reward(penalty) shaping → Early termination is a way to impose (soft) constraint, and proper early termination leads to fast convergence
    - State selection: Some states can dramatically increase the training speed, but it is important to consider whether they are suitable for sim-to-real transfer.
    - Exploration issues: If exploration is insufficient and the model is stuck in a local minimum, adjust the action distribution standard deviation.
 ### **Learning parameter tuning:**
@@ -15,6 +16,7 @@
 # 2. **Adjustments for real robot usage:**
 ### **Add regularization terms:** 
    - Commonly used terms include qvel, qacc, torque, torque diff, and contact force.
+      - Tip: Observe the robot’s motion frequently! (Ideally, use a real-time simulator) → Visualize the policy, analyze data, and develop an intuition for the magnitude of data that results in aggressive movements → e.g., contact force < 1400N.
 ### **Tuning:**
    - Ensure these terms do not interfere with task learning.
 
