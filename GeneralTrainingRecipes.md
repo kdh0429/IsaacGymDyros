@@ -3,20 +3,21 @@
    - Generally not a significant issue.
    - Typically, 2-3 layers with 256 or 512 units are used.
 ### **MDP-related considerations:**
-   - Reward tuning: If the reward is not well-tuned.
+   - Tune the reward if the task is not learned.
+      - For example, if the task is walking but the policy learns to remain stationary, you should increase the task reward (e.g., command velocity tracking) to ensure it outweighs the reward for simply staying alive.
       - Early termination is a huge reward(penalty) shaping → Early termination is a way to impose (soft) constraint, and proper early termination leads to fast convergence
    - State selection: Some states can dramatically increase the training speed, but it is important to consider whether they are suitable for sim-to-real transfer.
    - Exploration issues: If exploration is insufficient and the model is stuck in a local minimum, adjust the action distribution standard deviation.
 ### **Learning parameter tuning:**
    - Important parameters:
-       - Actor and critic learning rate: Reduce if the loss is large. Increase the actor learning rate if the KL or clip fraction is too small.
+       - Actor and critic learning rate: Reduce if the loss is large. Increase the actor learning rate if the KL or clip fraction(PPO) is too small.
        - Horizon length.
        - Training iterations.
 
 # 2. **Adjustments for real robot usage:**
 ### **Add regularization terms:** 
    - Commonly used terms include qvel, qacc, torque, torque diff, and contact force.
-      - Tip: Observe the robot’s motion frequently! (Ideally, use a real-time simulator) → Visualize the policy, analyze data, and develop an intuition for the magnitude of data that results in aggressive movements → e.g., contact force < 1400N.
+      - Tip: Observe the robot’s motion in simulation frequently! (Ideally, use a real-time simulator) → Visualize the policy, analyze data, and develop an intuition for the magnitude of data that results in aggressive movements → e.g., contact force < 1400N.
 ### **Tuning:**
    - Ensure these terms do not interfere with task learning.
 
@@ -25,9 +26,10 @@
   - **ENSURE THAT THE PERFORMANCE IN THE TRAINED ENVIRONMENT IS GOOD BEFORE SIM-TO-REAL OR SIM-TO-SIM TRANSFER.**
   - **Testing environment:** Test in the nominal environment without randomization (e.g., noise, bias, dynamics randomization) in the trained simulator.
   - **Key checks:**
-      - Ensure the robot does not deviate significantly when given a 0 velocity command.
+      - Ensure the robot does not drift significantly when given a 0 velocity command.
       - Minimal drift to lateral direction when given a forward velocity command.
       - Contact force is not excessive.
+      - Command torque/torque difference is not excessive.
       - The robot does not fall over time, especially for tasks requiring prolonged standing.
 ### **Strategies to reduce the sim-to-real/sim-to-sim gap:**
   - **Option 1:** Tune the reward to encourage motions favorable for sim-to-real transfer (e.g., flat foot, smooth contact force) $\approx$ regularization term tuning in step 2.
