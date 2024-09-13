@@ -524,8 +524,25 @@ class DyrosDynamicWalk(VecTask):
             forces[:,self.pelvis_idx,1] = torch.where(self.pert_on,self.magnitude[:]*torch.sin(self.phase[:]),forces[:,-1,1])    
             perturbation_terminate_idx = (self.perturbation_count==self.pert_duration)
             self.finish_perturbation(perturbation_terminate_idx)
-            self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(forces), gymtorch.unwrap_tensor(torques), gymapi.ENV_SPACE)          
+            self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(forces), gymtorch.unwrap_tensor(torques), gymapi.ENV_SPACE)     
         for _ in range(self.skipframe): #rui - main simulation loop
+            # self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
+            #                                             device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
+            # self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
+            #                                             device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
+            
+            self.delay_idx_tensor[:, 1] = torch.randint(low=1 + int(0.002 / self.dt),
+                                                        high=1 + round(0.03 / self.dt),
+                                                        size=(self.delay_idx_tensor.shape[0], 1),
+                                                        device=self.device,
+                                                        requires_grad=False).squeeze(-1)
+
+            self.obs_delay_idx_tensor[:, 1] = torch.randint(low=1 + int(0.002 / self.dt),
+                                                            high=1 + round(0.03 / self.dt),
+                                                            size=(self.obs_delay_idx_tensor.shape[0], 1),
+                                                            device=self.device,
+                                                            requires_grad=False).squeeze(-1)
+            
             mocap_torque = self.Kp*(self.target_data_qpos[:,:] - self.qpos_noise[:,:]) + self.Kv*(-self.dof_vel[:,:])
             upper_torque = self.Kp[12:]*(self.target_data_qpos[:,12:] - self.dof_pos[:,12:]) + self.Kv[12:]*(-self.dof_vel[:,12:])
             total_torque = torch.cat([self.action_torque,upper_torque], dim=1)
@@ -540,6 +557,9 @@ class DyrosDynamicWalk(VecTask):
             # print(" self.delay_idx_tensor[:,1]: ",  self.delay_idx_tensor[:,1])
             bigmask = torch.zeros(self.num_envs, 12,device=self.device, dtype=torch.bool) #rui - boolean bigmask shape [self.num_envs, 12] with all values set to False
             bigmask[:,:] = mask[:].unsqueeze(-1) #NOTE - [self.num_envs, 12] #rui - broadcasting will repeat the values of mask_unsqueezed along the second dimension (12 times)
+        
+            # print("delay_idx_tensor")
+            # print(self.delay_idx_tensor)
             delayed_lower_torque = torch.where(bigmask, 
                                                self.action_log[self.delay_idx_tensor[:,0],-self.delay_idx_tensor[:,1],:], \
                                                self.action_log[self.simul_len_tensor[:,0],-self.simul_len_tensor[:,1],:])
@@ -664,6 +684,8 @@ class DyrosDynamicWalk(VecTask):
             #                     self.obs_log[self.obs_delay_idx_tensor[:,0], self.num_single_step_obs*(self.num_obs_skip*self.skipframe*(i+1)-1) + self.obs_delay_idx_tensor[:,1],:], \
             #                     self.obs_log[self.simul_len_tensor[:,0], self.num_single_step_obs*(self.num_obs_skip*self.skipframe*(i+1)-1) -self.simul_len_tensor[:,1],:]) #! size of num_envs, 37
             
+            # print("obs_delay_idx_tensor")
+            # print(self.obs_delay_idx_tensor)
             #! obs obs delay
             obs_mask = self.simul_len_tensor[:, 1] > self.obs_delay_idx_tensor[:, 1]
             obs_bigmask_obs = torch.zeros(self.num_envs, self.num_single_step_obs, device=self.device, dtype=torch.bool)
@@ -768,6 +790,8 @@ class DyrosDynamicWalk(VecTask):
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         if len(env_ids) > 0:
             self.reset_idx(env_ids)
+            
+
 
         # self.compute_observations()
         #late update
@@ -873,10 +897,10 @@ class DyrosDynamicWalk(VecTask):
         self.reset_buf[env_ids] = 1
 
         self.action_log[env_ids] = torch.zeros(1+round(0.03/self.dt),12,device=self.device,dtype=torch.float,requires_grad=False)
-        self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
-                                                        device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
-        self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
-                                                        device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
+        # self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
+        #                                                 device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
+        # self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
+        #                                                 device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
         self.contact_reward_mean[env_ids] = self.contact_reward_sum[env_ids] /  self.epi_len[env_ids]
         self.contact_reward_sum[env_ids] = 0
         #low 5, high 12 for 2000 / 250Hz
@@ -1074,10 +1098,11 @@ def compute_humanoid_walk_reward(
     mimic_body_orientation_reward = 0.3 * torch.exp(-13.2 * torch.abs(quat_error)) 
     #calculate joint position & velocity & regulate with target
     # qpos_regulation = 0.35 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2) #NOTE - orig
-    qpos_regulation = 0.45 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2)
+    qpos_regulation = 0.45 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2) #NOTE - orig
     
     #calculate difference between initial q_vel, and q_vel now
-    qvel_regulation = 0.05 * torch.exp(-0.01 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2)
+    qvel_regulation = 0.05 * torch.exp(-0.01 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2) #NOTE - orig
+    # qvel_regulation = 0.05 * torch.exp(-0.01 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2) 
     #penalize contact force & difference
     
     #1. Method (by sensor -> doesnt works well)
@@ -1144,9 +1169,8 @@ def compute_humanoid_walk_reward(
 
     contact_force_penalty_thres = 0.1*(1-torch.exp(-0.007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
                                                             + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1))))
-    # contact_force_penalty = torch.where(thres.squeeze(-1), contact_force_penalty_thres[:], 0.1*ones[:]) #NOTE - orig
-    contact_force_penalty = torch.where(thres.squeeze(-1), contact_force_penalty_thres[:], 0.13*ones[:])
-        
+    contact_force_penalty = torch.where(thres.squeeze(-1), contact_force_penalty_thres[:], 0.1*ones[:]) #NOTE - orig
+    
     # left_foot_thres_diff = torch.abs(lfoot_force[:,2]-lfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass/policy_freq_scale
     # right_foot_thres_diff = torch.abs(rfoot_force[:,2]-rfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass/policy_freq_scale
     # left_foot_thres_diff = torch.abs(lfoot_force[:,2]-lfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass/policy_freq_scale
