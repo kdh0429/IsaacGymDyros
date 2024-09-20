@@ -54,6 +54,9 @@ class AMPAgent(common_agent.CommonAgent):
         if self._normalize_amp_input:
             self._amp_input_mean_std = RunningMeanStd(self._amp_observation_space.shape).to(self.ppo_device)
 
+        self.reward_names = []
+        self.reward_values = torch.zeros((self.num_agents*self.num_actors, len(self.reward_names)), dtype=torch.float32 ,device=self.ppo_device)
+
         return
 
     def init_tensors(self):
@@ -122,6 +125,11 @@ class AMPAgent(common_agent.CommonAgent):
 
             self.current_rewards += rewards
             self.current_lengths += 1
+
+            if 'reward_names' in infos and 'reward_values' in infos:
+                self.reward_names = infos['reward_names']
+                self.reward_values = infos['reward_values']
+
             all_done_indices = self.dones.nonzero(as_tuple=False)
             done_indices = all_done_indices[::self.num_agents]
   
@@ -289,7 +297,7 @@ class AMPAgent(common_agent.CommonAgent):
         if self.is_rnn:
             rnn_masks = input_dict['rnn_masks']
             batch_dict['rnn_states'] = input_dict['rnn_states']
-            batch_dict['seq_length'] = self.seq_len
+            batch_dict['seq_len'] = self.seq_len
 
         with torch.cuda.amp.autocast(enabled=self.mixed_precision):
             res_dict = self.model(batch_dict)
@@ -419,14 +427,14 @@ class AMPAgent(common_agent.CommonAgent):
             disc_weight_decay = torch.sum(torch.square(disc_weights))
             disc_loss += self._disc_weight_decay * disc_weight_decay
 
-        disc_agent_acc, disc_demo_acc = self._compute_disc_acc(disc_agent_logit, disc_demo_logit)
+        # disc_agent_acc, disc_demo_acc = self._compute_disc_acc(disc_agent_logit, disc_demo_logit)
 
         disc_info = {
             'disc_loss': disc_loss,
             'disc_grad_penalty': disc_grad_penalty,
             'disc_logit_loss': disc_logit_loss,
-            'disc_agent_acc': disc_agent_acc,
-            'disc_demo_acc': disc_demo_acc,
+            # 'disc_agent_acc': disc_agent_acc,
+            # 'disc_demo_acc': disc_demo_acc,
             'disc_agent_logit': disc_agent_logit,
             'disc_demo_logit': disc_demo_logit
         }
@@ -435,11 +443,17 @@ class AMPAgent(common_agent.CommonAgent):
     def _disc_loss_neg(self, disc_logits):
         bce = torch.nn.BCEWithLogitsLoss()
         loss = bce(disc_logits, torch.zeros_like(disc_logits))
+
+        # Least Square GAN
+        # loss = 0.5 * torch.mean((disc_logits + torch.ones_like(disc_logits)) ** 2)
         return loss
     
     def _disc_loss_pos(self, disc_logits):
         bce = torch.nn.BCEWithLogitsLoss()
         loss = bce(disc_logits, torch.ones_like(disc_logits))
+
+        # Least Square GAN
+        # loss = 0.5 * torch.mean((disc_logits - torch.ones_like(disc_logits)) ** 2)
         return loss
 
     def _compute_disc_acc(self, disc_agent_logit, disc_demo_logit):
@@ -510,6 +524,10 @@ class AMPAgent(common_agent.CommonAgent):
             disc_logits = self._eval_disc(amp_obs)
             prob = 1 / (1 + torch.exp(-disc_logits)) 
             disc_r = -torch.log(torch.maximum(1 - prob, torch.tensor(0.0001, device=self.ppo_device)))
+
+            # Least Square GAN
+            # disc_r = torch.maximum(1.0 - 0.25 * torch.square(disc_logits - 1), torch.tensor(0.0, device=self.ppo_device))
+            
             disc_r *= self._disc_reward_scale
         return disc_r
 
@@ -533,16 +551,22 @@ class AMPAgent(common_agent.CommonAgent):
 
         self.writer.add_scalar('losses/disc_loss', torch_ext.mean_list(train_info['disc_loss']).item(), frame)
 
-        self.writer.add_scalar('info/disc_agent_acc', torch_ext.mean_list(train_info['disc_agent_acc']).item(), frame)
-        self.writer.add_scalar('info/disc_demo_acc', torch_ext.mean_list(train_info['disc_demo_acc']).item(), frame)
+        # self.writer.add_scalar('info/disc_agent_acc', torch_ext.mean_list(train_info['disc_agent_acc']).item(), frame)
+        # self.writer.add_scalar('info/disc_demo_acc', torch_ext.mean_list(train_info['disc_demo_acc']).item(), frame)
         self.writer.add_scalar('info/disc_agent_logit', torch_ext.mean_list(train_info['disc_agent_logit']).item(), frame)
         self.writer.add_scalar('info/disc_demo_logit', torch_ext.mean_list(train_info['disc_demo_logit']).item(), frame)
         self.writer.add_scalar('info/disc_grad_penalty', torch_ext.mean_list(train_info['disc_grad_penalty']).item(), frame)
         self.writer.add_scalar('info/disc_logit_loss', torch_ext.mean_list(train_info['disc_logit_loss']).item(), frame)
 
         disc_reward_std, disc_reward_mean = torch.std_mean(train_info['disc_rewards'])
-        self.writer.add_scalar('info/disc_reward_mean', disc_reward_mean.item(), frame)
-        self.writer.add_scalar('info/disc_reward_std', disc_reward_std.item(), frame)
+        # self.writer.add_scalar('info/disc_reward_mean', disc_reward_mean.item(), frame)
+        # self.writer.add_scalar('info/disc_reward_std', disc_reward_std.item(), frame)
+
+        specific_mean_rewards_values = torch.mean(self.reward_values, axis=0)
+        for i in range(len(self.reward_names)):
+            self.writer.add_scalar('rewards/' + self.reward_names[i], specific_mean_rewards_values[i].item(), frame)
+        self.writer.add_scalar('rewards/disc', disc_reward_mean.item(), frame)
+
         return
 
     def _amp_debug(self, info):

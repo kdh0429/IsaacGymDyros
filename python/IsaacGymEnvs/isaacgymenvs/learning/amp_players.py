@@ -49,6 +49,14 @@ class AMPPlayerContinuous(common_player.CommonPlayer):
         if self._normalize_amp_input:
             checkpoint = torch_ext.load_checkpoint(fn)
             self._amp_input_mean_std.load_state_dict(checkpoint['amp_input_mean_std'])
+
+            for name, param in checkpoint['running_mean_std'].items():
+                name= name.replace(".","_")
+                weight_file_name = "./result/" + "running_mean_std_" + name + ".txt"
+                import numpy as np
+                if param.data.ndim == 0:
+                    param.data = param.data.reshape(1)
+                np.savetxt(weight_file_name, param.data.cpu())
         return
     
     def _build_net(self, config):
