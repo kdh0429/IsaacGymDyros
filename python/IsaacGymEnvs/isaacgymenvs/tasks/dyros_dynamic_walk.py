@@ -1311,21 +1311,22 @@ def compute_humanoid_walk_reward(
         ]
     
     reward = torch.stack([mimic_body_orientation_reward,\
-            qpos_regulation,qvel_regulation,\
+            qpos_regulation,\
+            qvel_regulation,\
             contact_force_penalty,\
             torque_regulation,\
-            # torque_diff_regulation,\
             body_vel_reward,\
-            qacc_regulation,
+            qacc_regulation,\
             foot_contact_reward,\
-            # contact_force_diff_regulation,\
-            # double_support_force_diff_regulation, 
             force_thres_penalty,\
-            # force_diff_thres_penalty,\
             force_ref_reward,\
             torque_diff_regulation_simtick_rewmean,\
             contact_force_diff_regulation_simtick_rewmean,\
             force_diff_thres_penalty_simtick_rewmean],1)
+            # torque_diff_regulation,\
+            # contact_force_diff_regulation,\
+            # double_support_force_diff_regulation, 
+            # force_diff_thres_penalty,\
 
     total_reward = mimic_body_orientation_reward +\
             qpos_regulation +\

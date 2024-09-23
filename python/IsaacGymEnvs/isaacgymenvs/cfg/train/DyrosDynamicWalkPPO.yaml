@@ -92,6 +92,6 @@ params:
     #wandb
     wandb_activate: True # True, False
     log_wandb_frequency: 10
-    num_rewards: 14 #Modify with individual tasks 
+    num_rewards: 13 #Modify with individual tasks 
     num_extra_logging: 1
     separate_opt: True #True only when trying to study with separate actor/critic
