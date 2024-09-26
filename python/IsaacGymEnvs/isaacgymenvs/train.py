@@ -37,7 +37,7 @@ from omegaconf import DictConfig, OmegaConf
 from hydra.utils import to_absolute_path
 
 from isaacgymenvs.utils.reformat import omegaconf_to_dict, print_dict
-from isaacgymenvs.utils.rlgames_utils import RLGPUEnv, RLGPUAlgoObserver, get_rlgames_env_creator
+from isaacgymenvs.utils.rlgames_utils import RLGPUEnv, RLGPUAlgoObserver, MultiObserver, get_rlgames_env_creator
 
 from utils.utils import set_np_formatting, set_seed
 
@@ -50,6 +50,7 @@ from isaacgymenvs.learning import amp_continuous
 from isaacgymenvs.learning import amp_players
 from isaacgymenvs.learning import amp_models
 from isaacgymenvs.learning import amp_network_builder
+from isaacgymenvs.utils.wandb_utils import WandbAlgoObserver
 
 
 ## OmegaConf & Hydra Config
@@ -74,6 +75,9 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     # set numpy formatting for printing only
     set_np_formatting()
+    
+    # global rank of the GPU
+    global_rank = int(os.getenv("RANK", "0"))
 
     # sets seed. if seed is -1 will pick a random one
     cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
@@ -97,6 +101,15 @@ def launch_rlg_hydra(cfg: DictConfig):
         'vecenv_type': 'RLGPU',
         'env_creator': lambda **kwargs: create_rlgpu_env(**kwargs),
     })
+    
+    observers = [RLGPUAlgoObserver()]
+    
+    if cfg.wandb_activate:
+        cfg.seed += global_rank
+        if global_rank == 0:
+            # initialize wandb only once per multi-gpu run
+            wandb_observer = WandbAlgoObserver(cfg)
+            observers.append(wandb_observer)
 
     # register new AMP network builder and agent
     def build_runner(algo_observer):
@@ -112,7 +125,7 @@ def launch_rlg_hydra(cfg: DictConfig):
 
     # convert CLI arguments into dictionory
     # create runner and set the settings
-    runner = build_runner(RLGPUAlgoObserver())
+    runner = build_runner(MultiObserver(observers))
     runner.load(rlg_config_dict)
     runner.reset()
 

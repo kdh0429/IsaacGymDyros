@@ -78,7 +78,7 @@ params:
     truncate_grads: False
     e_clip: 0.2
     horizon_length: 32 #32 # batch size per actor
-    minibatch_size: 131072 #98304 #131072 #524288  # minibatch size 4096 * 64, 128
+    minibatch_size: 4096 #98304 #131072 #524288  # minibatch size 4096 * 64, 128
     mini_epochs: 6
     critic_coef: 5 #0.5
     clip_value: False
@@ -88,7 +88,7 @@ params:
     amp_replay_buffer_size: 1000000
     amp_replay_keep_prob: 0.01
     amp_batch_size: 512
-    amp_minibatch_size: 131072 #32768 # 4096*8
+    amp_minibatch_size: 4096 #32768 # 4096*8
     disc_coef: 5
     disc_logit_reg: 0.05
     disc_grad_penalty: 0.1

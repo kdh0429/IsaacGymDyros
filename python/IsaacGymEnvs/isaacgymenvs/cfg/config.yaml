@@ -44,7 +44,7 @@ headless: True
 
 # set default task and default training config based on task
 defaults:
-  - task: Ant
+  - task: TocabiAMPLower
   - train: ${task}PPO
   - hydra/job_logging: disabled
 
@@ -54,3 +54,11 @@ hydra:
   run:
     dir: .
 
+
+wandb_activate: True
+wandb_group: ''
+wandb_name: ${train.params.config.name}
+wandb_entity: ''
+wandb_project: 'isaacgymenvs'
+wandb_tags: []
+wandb_logcode_dir: '' 
