@@ -45,6 +45,8 @@ import learning.replay_buffer as replay_buffer
 import learning.common_agent as common_agent 
 
 from tensorboardX import SummaryWriter
+import wandb
+import os
 
 
 class AMPAgent(common_agent.CommonAgent):
@@ -53,6 +55,20 @@ class AMPAgent(common_agent.CommonAgent):
 
         if self._normalize_amp_input:
             self._amp_input_mean_std = RunningMeanStd(self._amp_observation_space.shape).to(self.ppo_device)
+        print('AMP Agent Initialized')
+        print('AMP Agent Initialized')
+        print('AMP Agent Initialized')
+        print('AMP Agent Initialized')
+        print('AMP Agent Initialized')
+        #GENE : for wandb logging
+        self.wandb_activate = config.get('wandb_activate',False)
+        self.log_wandb_frequency = config.get('log_wandb_frequency',-1)
+        self.init_wandb = False
+        self.num_rewards = config.get('num_rewards',1) + config.get('num_extra_logging',1)
+        # if (self.terrain_cfg.curriculum and self.terrain_cfg.mesh_type in ["heightfield", "trimesh"]):
+        #     self.num_rewards += self.terrain_cfg.num_cols
+        # self.reward_names = []
+        # self.current_specific_rewards = torch.zeros((self.num_actors*self.num_agents,self.num_rewards),dtype=torch.float32, device=self.ppo_device)
 
         self.reward_names = []
         self.reward_values = torch.zeros((self.num_agents*self.num_actors, len(self.reward_names)), dtype=torch.float32 ,device=self.ppo_device)
@@ -145,6 +161,11 @@ class AMPAgent(common_agent.CommonAgent):
             if (self.vec_env.env.viewer and (n == (self.horizon_length - 1))):
                 self._amp_debug(infos)
 
+            #GENE: updating specific rewards for wandb
+            # if 'reward_names' in infos and 'stacked_rewards' in infos:
+            #     self.reward_names = infos['reward_names']
+                # self.current_specific_rewards = infos['stacked_rewards']
+
         mb_fdones = self.experience_buffer.tensor_dict['dones'].float()
         mb_values = self.experience_buffer.tensor_dict['values']
         mb_next_values = self.experience_buffer.tensor_dict['next_values']
@@ -171,6 +192,115 @@ class AMPAgent(common_agent.CommonAgent):
         self.dataset.values_dict['amp_obs'] = batch_dict['amp_obs']
         self.dataset.values_dict['amp_obs_demo'] = batch_dict['amp_obs_demo']
         self.dataset.values_dict['amp_obs_replay'] = batch_dict['amp_obs_replay']
+        return
+    
+    def train(self):
+        # super().train()
+        print('Started to train')
+        print('Started to train')
+        print('Started to train')
+        print('Started to train')
+        print('Started to train')
+        self.init_tensors()
+        self.last_mean_rewards = -100500
+        start_time = time.time()
+        total_time = 0
+        rep_count = 0
+        self.frame = 0
+        self.obs = self.env_reset()
+        self.curr_frames = self.batch_size_envs
+        
+        self.model_output_file = os.path.join(self.network_path, self.config['name'])
+
+        if self.multi_gpu:
+            self.hvd.setup_algo(self)
+
+        self._init_train()
+
+        while True:
+            epoch_num = self.update_epoch()
+            train_info = self.train_epoch()
+
+            sum_time = train_info['total_time']
+            total_time += sum_time
+            frame = self.frame
+            if self.multi_gpu:
+                self.hvd.sync_stats(self)
+
+            if self.rank == 0:
+                scaled_time = sum_time
+                scaled_play_time = train_info['play_time']
+                curr_frames = self.curr_frames
+                self.frame += curr_frames
+                if self.print_stats:
+                    fps_step = curr_frames / scaled_play_time
+                    fps_total = curr_frames / scaled_time
+                    print(f'fps step: {fps_step:.1f} fps total: {fps_total:.1f}')
+
+                self.writer.add_scalar('performance/total_fps', curr_frames / scaled_time, frame)
+                self.writer.add_scalar('performance/step_fps', curr_frames / scaled_play_time, frame)
+                self.writer.add_scalar('info/epochs', epoch_num, frame)
+                self._log_train_info(train_info, frame)
+
+                self.algo_observer.after_print_stats(frame, epoch_num, total_time)
+                
+                if self.game_rewards.current_size > 0:
+                    mean_rewards = self.game_rewards.get_mean()
+                    mean_lengths = self.game_lengths.get_mean()
+
+                    for i in range(self.value_size):
+                        self.writer.add_scalar('rewards/frame'.format(i), mean_rewards[i], frame)
+                        self.writer.add_scalar('rewards/iter'.format(i), mean_rewards[i], epoch_num)
+                        self.writer.add_scalar('rewards/time'.format(i), mean_rewards[i], total_time)
+
+                    self.writer.add_scalar('episode_lengths/frame', mean_lengths, frame)
+                    self.writer.add_scalar('episode_lengths/iter', mean_lengths, epoch_num)
+
+                    if self.has_self_play_config:
+                        self.self_play_manager.update(self)
+
+                                    
+                    #GENE : Adding line for logging wandb
+                    # for k, v in train_info.items():
+                    #     print(k, v)
+                    a_losses = torch_ext.mean_list(train_info['actor_loss'])
+                    c_losses = torch_ext.mean_list(train_info['critic_loss'])
+                    b_losses = torch_ext.mean_list(train_info['b_loss'])
+                    entropies = torch_ext.mean_list(train_info['entropy'])
+                    kls = torch_ext.mean_list(train_info['kl'])
+                    clip_fracs = torch_ext.mean_list(train_info['actor_clip_frac'])
+                    
+                    #get specific mean rewards
+                    # mean_specific_rewards = torch.mean(self.current_specific_rewards, axis=0)
+                    mean_specific_rewards = torch.mean(self.reward_values, axis=0)
+                    
+                    #GENE : Adding line for logging wandb
+                    if self.wandb_activate:
+                        self.log_wandb(
+                        self.frame,
+                        epoch_num,
+                        mean_rewards,
+                        mean_lengths,
+                        a_losses, 
+                        b_losses,
+                        c_losses,
+                        entropies,
+                        kls,
+                        clip_fracs,
+                        mean_specific_rewards,
+                        self.reward_names
+                        )
+
+                if self.save_freq > 0:
+                    if (epoch_num % self.save_freq == 0):
+                        self.save(self.model_output_file + "_" + str(epoch_num))
+
+                if epoch_num > self.max_epochs:
+                    self.save(self.model_output_file)
+                    print('MAX EPOCHS NUM!')
+                    return self.last_mean_rewards, epoch_num
+
+                update_time = 0
         return
 
     def train_epoch(self):
@@ -442,18 +572,18 @@ class AMPAgent(common_agent.CommonAgent):
 
     def _disc_loss_neg(self, disc_logits):
         bce = torch.nn.BCEWithLogitsLoss()
-        loss = bce(disc_logits, torch.zeros_like(disc_logits))
+        # loss = bce(disc_logits, torch.zeros_like(disc_logits))
 
         # Least Square GAN
-        # loss = 0.5 * torch.mean((disc_logits + torch.ones_like(disc_logits)) ** 2)
+        loss = 0.5 * torch.mean((disc_logits + torch.ones_like(disc_logits)) ** 2)
         return loss
     
     def _disc_loss_pos(self, disc_logits):
         bce = torch.nn.BCEWithLogitsLoss()
-        loss = bce(disc_logits, torch.ones_like(disc_logits))
+        # loss = bce(disc_logits, torch.ones_like(disc_logits))
 
         # Least Square GAN
-        # loss = 0.5 * torch.mean((disc_logits - torch.ones_like(disc_logits)) ** 2)
+        loss = 0.5 * torch.mean((disc_logits - torch.ones_like(disc_logits)) ** 2)
         return loss
 
     def _compute_disc_acc(self, disc_agent_logit, disc_demo_logit):
@@ -522,11 +652,11 @@ class AMPAgent(common_agent.CommonAgent):
     def _calc_disc_rewards(self, amp_obs):
         with torch.no_grad():
             disc_logits = self._eval_disc(amp_obs)
-            prob = 1 / (1 + torch.exp(-disc_logits)) 
-            disc_r = -torch.log(torch.maximum(1 - prob, torch.tensor(0.0001, device=self.ppo_device)))
+            # prob = 1 / (1 + torch.exp(-disc_logits)) 
+            # disc_r = -torch.log(torch.maximum(1 - prob, torch.tensor(0.0001, device=self.ppo_device)))
 
             # Least Square GAN
-            # disc_r = torch.maximum(1.0 - 0.25 * torch.square(disc_logits - 1), torch.tensor(0.0, device=self.ppo_device))
+            disc_r = torch.maximum(1.0 - 0.25 * torch.square(disc_logits - 1), torch.tensor(0.0, device=self.ppo_device))
             
             disc_r *= self._disc_reward_scale
         return disc_r
@@ -561,6 +691,26 @@ class AMPAgent(common_agent.CommonAgent):
         disc_reward_std, disc_reward_mean = torch.std_mean(train_info['disc_rewards'])
         # self.writer.add_scalar('info/disc_reward_mean', disc_reward_mean.item(), frame)
         # self.writer.add_scalar('info/disc_reward_std', disc_reward_std.item(), frame)
+        
+                
+        """
+        self.writer.add_scalar('performance/step_inference_rl_update_fps', curr_frames / scaled_time, frame)
+        self.writer.add_scalar('performance/step_inference_fps', curr_frames / scaled_play_time, frame)
+        self.writer.add_scalar('performance/step_fps', curr_frames / step_time, frame)
+        self.writer.add_scalar('performance/rl_update_time', update_time, frame)
+        self.writer.add_scalar('performance/step_inference_time', play_time, frame)
+        self.writer.add_scalar('performance/step_time', step_time, frame)
+        self.writer.add_scalar('losses/a_loss', torch_ext.mean_list(a_losses).item(), frame)
+        self.writer.add_scalar('losses/c_loss', torch_ext.mean_list(c_losses).item(), frame)
+                
+        self.writer.add_scalar('losses/entropy', torch_ext.mean_list(entropies).item(), frame)
+        self.writer.add_scalar('info/last_lr', last_lr * lr_mul, frame)
+        self.writer.add_scalar('info/lr_mul', lr_mul, frame)
+        self.writer.add_scalar('info/e_clip', self.e_clip * lr_mul, frame)
+        self.writer.add_scalar('info/kl', torch_ext.mean_list(kls).item(), frame)
+        self.writer.add_scalar('info/epochs', epoch_num, frame)
+        self.algo_observer.after_print_stats(frame, epoch_num, total_time)
+        """
 
         specific_mean_rewards_values = torch.mean(self.reward_values, axis=0)
         for i in range(len(self.reward_names)):
@@ -581,3 +731,69 @@ class AMPAgent(common_agent.CommonAgent):
             disc_reward = disc_reward.cpu().numpy()[0, 0]
             print("disc_pred: ", disc_pred, disc_reward)
         return
+
+#GENE : Function for logging wandb
+    def log_wandb(
+        self,
+        frame,
+        epoch_num,
+        mean_rewards,
+        mean_lengths,
+        a_losses, 
+        b_losses,
+        c_losses,
+        entropies,
+        kls,
+        clip_fracs,
+        specific_mean_rewards,
+        reward_names):
+        if not self.init_wandb:  
+            os.environ['WANDB_API_KEY'] = 'eea396051b98484ce4cc27d6abab8de9871491e4'  
+            wandb.init(project=self.config['name'], tensorboard=False)
+            # wandb.save(os.path.join(os.getcwd(), '../assets/mjcf/dyros_tocabi/xml/dyros_tocabi.xml'), policy="now")
+            # wandb.save(os.path.join(os.getcwd(), 'tasks/base/vec_task.py'), policy="now")
+            self.init_wandb = True
+            self.init_wandb_time = time.time()
+
+        if epoch_num % (self.log_wandb_frequency * self.mini_epochs_num) == 0:
+            wandb_time = time.time()
+            wandb_dict = {
+                "serial_timesteps": epoch_num * self.horizon_length,  # Adjust calculation if needed
+                "n_updates": epoch_num,
+                "total_timesteps": frame,
+                "fps": int(self.frame / (wandb_time - self.init_wandb_time)), 
+                'ep_reward_mean': mean_rewards.item(),  # Assuming mean_rewards is a tensor
+                "ep_len_mean": mean_lengths.item(),    # Assuming mean_lengths is a tensor
+                "time_elapsed": int(wandb_time - self.init_wandb_time)
+            }
+
+            # Log specific rewards
+            for i in range(self.num_rewards):  # Replace self.num_rewards with the actual number of rewards
+                wandb_dict["rollout/" + reward_names[i]] = specific_mean_rewards[i].item() 
+
+            # Ensure lists for metrics 
+            a_losses = [a_losses] if isinstance(a_losses, torch.Tensor) else a_losses
+            c_losses = [c_losses] if isinstance(c_losses, torch.Tensor) else c_losses
+            b_losses = [b_losses] if isinstance(b_losses, torch.Tensor) else b_losses
+            entropies = [entropies] if isinstance(entropies, torch.Tensor) else entropies
+            kls = [kls] if isinstance(kls, torch.Tensor) else kls
+            clip_fracs = [clip_fracs] if isinstance(clip_fracs, torch.Tensor) else clip_fracs
+
+            # Calculate and log training metrics
+            wandb_dict.update({
+                "train/entropy_loss": torch_ext.mean_list(entropies).item(),  # Replace torch_ext with your actual library if different
+                "train/policy_gradient_loss": torch_ext.mean_list(a_losses).item(),
+                "train/value_loss": torch_ext.mean_list(c_losses).item(),
+                "train/kl": torch_ext.mean_list(kls).item(),
+                "train/clip_fracs": torch_ext.mean_list(clip_fracs).item()
+            })
+
+            # Calculate and log total loss - Adapt the loss calculation to your specific algorithm
+            losses = [
+                a_loss + 0.5 * c_loss * self.critic_coef - entropy * self.entropy_coef + b_loss * self.bounds_loss_coef
+                for a_loss, c_loss, b_loss, entropy in zip(a_losses, c_losses, b_losses, entropies)
+            ]
+            wandb_dict["train/loss"] = torch_ext.mean_list(losses).item()
+
+            wandb.log(wandb_dict)
+                

@@ -7,7 +7,8 @@ physics_engine: ${..physics_engine}
 env: 
   numEnvs: ${resolve_default:4096,${...num_envs}}
   envSpacing: 5
-  episodeLength: 8000
+  # episodeLength: 8000
+  episodeLength: 32
   cameraFollow: True # if the camera follows humanoid or not
   enableDebugVis: False
   
@@ -31,7 +32,7 @@ env:
   NumSkip: 2
 
   command:
-    x: [-0.5, 1.0]
+    x: [-0.0, 1.0]
     y: [-0.0, 0.0] # -: right, +: left
     yaw: [-0.0, 0.0] # -pi/6 to pi/6
 
@@ -61,7 +62,7 @@ env:
       slopeTreshold: 0.5
 
 sim:
-  dt: 0.002
+  dt: 0.001 #rui sim freq [0.001 -> 1000Hz]
   # dt: 0.0005
   substeps: 1
   up_axis: "z"

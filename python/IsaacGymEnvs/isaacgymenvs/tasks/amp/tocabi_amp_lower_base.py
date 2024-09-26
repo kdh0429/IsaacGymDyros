@@ -62,7 +62,8 @@ class TocabiAMPLowerBase(VecTask):
         self.debug_viz = self.cfg["env"]["enableDebugVis"]
         self.camera_follow = self.cfg["env"].get("cameraFollow", False)
 
-        self.max_episode_length = self.cfg["env"]["episodeLength"]
+        self.max_episode_length_s = self.cfg["env"]["episodeLength"]
+        self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * 4) #? 32/(0.001 x 4) = 8000 
         self._local_root_obs = self.cfg["env"]["localRootObs"]
         self._contact_bodies = self.cfg["env"]["contactBodies"]
         self._termination_height = self.cfg["env"]["terminationHeight"]
@@ -93,8 +94,12 @@ class TocabiAMPLowerBase(VecTask):
                         0.0, 0.0,
                         -0.3, -0.174533, -1.22173, 1.27, 1.57, 0.0, 1.0, 0.0], device=self.device, dtype=torch.float32)
 
-        dt = self.cfg["sim"]["dt"]
-        self.dt = dt #* self.control_freq_inv
+        # dt = self.cfg["sim"]["dt"] 
+        # self.dt = dt #* self.control_freq_inv
+        self.dt = self.cfg["sim"]["dt"]
+        self.skipframe = self.cfg["env"].get("controlFrequencyInv", 8) #rui - controlFrequencyInv: 2 [500Hz] 
+        self.dt_policy = self.dt*self.skipframe #rui - dt_policy: 0.001 * 2 = 0.002 [500Hz]
+        self.policy_freq_scale = 1/(self.dt_policy * 250) # e.g. 100/250 #rui - 1 / (0.002 * 250) = 2.0[500Hz]
 
         self.power_scale = torch.ones(self.num_envs, 12, device=self.device)
         
@@ -136,6 +141,8 @@ class TocabiAMPLowerBase(VecTask):
         
         self._dof_vel_pre = self._dof_vel.clone()
         self.actions_pre = self.actions.clone()
+        self._dof_vel_pre_rewdiff = self._dof_vel.clone()
+        self.actions_pre_rewdiff = self.actions.clone()
 
         self._initial_dof_pos = torch.zeros_like(self._dof_pos, device=self.device, dtype=torch.float)
         self._initial_dof_pos[:] = self.init_angle
@@ -191,9 +198,15 @@ class TocabiAMPLowerBase(VecTask):
         self.start_target_vel = torch.zeros(self.num_envs,3,device=self.device,dtype=torch.float)
         self.final_target_vel =  torch.zeros(self.num_envs,3,device=self.device,dtype=torch.float) 
 
-        # modified observation
+        # modified action observation
         self.obs_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*NUM_OBS, dtype=torch.float, requires_grad=False, device=self.device)
         self.action_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_actions, dtype=torch.float, requires_grad=False, device=self.device)
+        
+        self.obs_history_2000 = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe*NUM_OBS, dtype=torch.float, requires_grad=False, device=self.device) # rui - obs_history_len * frameskip
+        self.obs_history_2000_3D = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe, NUM_OBS, dtype=torch.float, requires_grad=False, device=self.device) # rui - obs_history_len * frameskip
+        
+        self.action_history_2000 = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe*NUM_ACTIONS, dtype=torch.float, requires_grad=False, device=self.device) #rui - action_history_len * frameskip
+        self.action_history_2000_3D = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe, NUM_ACTIONS, dtype=torch.float, requires_grad=False, device=self.device) #rui - action_history_len * frameskip
         
         # action delay
         self.delay_idx_tensor = torch.zeros(self.num_envs,2,device=self.device,dtype=torch.long)
@@ -207,6 +220,10 @@ class TocabiAMPLowerBase(VecTask):
         
         if self.viewer != None:
             self._init_camera()
+            
+        #for sim step diff rew
+        self.torque_diff_regulation_simtick_rewmean = torch.zeros(self.num_envs, device=self.device, dtype=float)
+        self.joint_acceleration_regulation_simtick_rewmean = torch.zeros(self.num_envs, device=self.device, dtype=float)
 
         return
 
@@ -513,10 +530,16 @@ class TocabiAMPLowerBase(VecTask):
             self.motor_efforts,
             self._contact_forces,
             self.total_mass,
+            self.torque_diff_regulation_simtick_rewmean,
+            self.joint_acceleration_regulation_simtick_rewmean,
         )
-
+        
+        reward_values = torch.cat([reward_values, self.perturb_start], 1)
+        reward_names.append("perturbation")
+        
         self.extras["reward_names"] = reward_names
         self.extras["reward_values"] = reward_values
+        
         return
 
     def _compute_reset(self):
@@ -643,7 +666,7 @@ class TocabiAMPLowerBase(VecTask):
         self.actions = actions.to(self.device).clone()
         self.action_history = torch.cat((self.action_history[:,self.num_actions:], self.actions),dim=-1)
 
-        if (self.perturb and (torch.mean(self.epi_len_log[:]) > self.max_episode_length - 8/0.002) ):
+        if (self.perturb and (torch.mean(self.epi_len_log[:]) > self.max_episode_length - 2000) ):
             self.perturb_start[:, 0] = True
         # self.perturb_start[:, 0] = True
         if (self.perturb_start[0, 0] == True):
@@ -688,8 +711,15 @@ class TocabiAMPLowerBase(VecTask):
                                                                 , self.commands[:,i])
             self.cur_vel_change_duration += mask.int()
 
+        #SECTION - reset diff tensor list starts here
+        
+        torque_diff_regulation_rewdiff_list = []
+        joint_acceleration_regulation_rewdiff_list = []
+        
+        #!SECTION - reset diff tensor list ends here
         # print(self.commands[0,[0,2]])
-        for _ in range(self.control_freq_inv):
+        # for _ in range(self.control_freq_inv):
+        for _ in range(self.skipframe):
             if (self._pd_control):
                 pd_tar = self._action_to_pd_targets(self.actions)
                 torque_lower = self.p_gains[:self.num_actions]*(pd_tar - self._dof_pos[:,:self.num_actions]) + \
@@ -725,14 +755,33 @@ class TocabiAMPLowerBase(VecTask):
 
             self.gym.simulate(self.sim)
             self.gym.refresh_dof_state_tensor(self.sim)
-
             if self.noise:
                 self.qpos_noise = self._dof_pos + torch.clamp(torch.normal(torch.zeros_like(self._dof_pos), 0.00016/3.0), min=-0.00016, max=0.00016)
             else:
                 self.qpos_noise = self._dof_pos
-
             self.qvel_noise = (self.qpos_noise - self.qpos_pre) / self.dt
             self.qpos_pre = self.qpos_noise.clone()
+            #SECTION - for diff rew for every sim step starts here
+            #power  joint torque * vel -tou transpose qdot
+            torque_diff_regulation_rewdiff = 0.6 * torch.exp(-0.01 * torch.norm((actions[:,0:]-self.actions_pre_rewdiff[:,0:])*self.motor_efforts[:], dim=1)) #NOTE - orig
+            joint_acceleration_regulation_rewdiff = 0.05 * torch.exp(-20.0*torch.norm((self._dof_vel[:,0:]-self._dof_vel_pre_rewdiff[:,0:]), dim=1)**2) #NOTE - orig
+            torque_diff_regulation_rewdiff_list.append(torque_diff_regulation_rewdiff)
+            joint_acceleration_regulation_rewdiff_list.append(joint_acceleration_regulation_rewdiff)
+            
+            self._dof_vel_pre_rewdiff = self._dof_vel.clone()
+            self.actions_pre_rewdiff = self.actions.clone()
+            #!SECTION - for diff rew for every sim step ends here
+        
+        #SECTION - diff rew stack & mean starts
+        
+        torque_diff_regulation_rewdiff_list_stack = torch.stack(torque_diff_regulation_rewdiff_list, dim=0) 
+        joint_acceleration_regulation_rewdiff_list_stack = torch.stack(joint_acceleration_regulation_rewdiff_list, dim=0) 
+        
+        self.torque_diff_regulation_simtick_rewmean = torch.mean(torque_diff_regulation_rewdiff_list_stack, dim=0) 
+        self.joint_acceleration_regulation_simtick_rewmean = torch.mean(joint_acceleration_regulation_rewdiff_list_stack, dim=0) 
+        
+        
+        #!SECTION - diff rew stack & mean ends
 
         self.epi_len[:] +=1
 
@@ -963,8 +1012,18 @@ def compute_humanoid_observations(root_states, rootvel_noise, dof_pos, dof_pos_b
 
 @torch.jit.script
 # def compute_humanoid_reward(obs_buf, initial_root_states, root_states, dof_vel_pre, actions_pre, motor_efforts):
-def compute_humanoid_reward(root_states, dof_vel, dof_vel_pre, commands, actions, actions_pre, motor_efforts, contact_force, total_mass):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) -> Tuple[Tensor, Tensor, List[str]]
+def compute_humanoid_reward(root_states,
+                            dof_vel,
+                            dof_vel_pre,
+                            commands,
+                            actions,
+                            actions_pre,
+                            motor_efforts,
+                            contact_force,
+                            total_mass,
+                            torque_diff_regulation_simtick_rewmean,
+                            joint_acceleration_regulation_simtick_rewmean):
+    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) -> Tuple[Tensor, Tensor, List[str]]
     '''
     Reward List
     - command vel x tracking
@@ -997,9 +1056,11 @@ def compute_humanoid_reward(root_states, dof_vel, dof_vel_pre, commands, actions
 
     ############################### Regulation Rewards #########################################
     _reward_joint_velocity_regulation = 0.05 * torch.exp(-0.01 * torch.norm((dof_vel[:,0:]), dim=1)**2)
-    _reward_joint_acceleration_regulation = 0.05 * torch.exp(-20.0*torch.norm((dof_vel[:,0:]-dof_vel_pre[:,0:]), dim=1)**2)
+    # _reward_joint_acceleration_regulation = 0.05 * torch.exp(-20.0*torch.norm((dof_vel[:,0:]-dof_vel_pre[:,0:]), dim=1)**2) #NOTE - orig
+    _reward_joint_acceleration_regulation = joint_acceleration_regulation_simtick_rewmean
     _reward_torque_regulation = 0.08 * torch.exp(-0.05 * torch.norm((actions[:,0:])*motor_efforts[:],dim=1))
-    _reward_torque_diff_regulation = 0.6 * torch.exp(-0.01 * torch.norm((actions[:,0:]-actions_pre[:,0:])*motor_efforts[:], dim=1))
+    # _reward_torque_diff_regulation = 0.6 * torch.exp(-0.01 * torch.norm((actions[:,0:]-actions_pre[:,0:])*motor_efforts[:], dim=1)) #NOTE - orig
+    _reward_torque_diff_regulation = torque_diff_regulation_simtick_rewmean
     
     
     reward += _rew_lin_vel_x

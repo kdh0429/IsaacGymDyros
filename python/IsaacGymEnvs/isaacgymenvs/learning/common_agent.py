@@ -50,6 +50,8 @@ import learning.amp_datasets as amp_datasets
 
 from tensorboardX import SummaryWriter
 
+import wandb
+
 
 class CommonAgent(a2c_continuous.A2CAgent):
     def __init__(self, base_name, config):
@@ -101,6 +103,16 @@ class CommonAgent(a2c_continuous.A2CAgent):
         self.dataset = amp_datasets.AMPDataset(self.batch_size, self.minibatch_size, self.is_discrete, self.is_rnn, self.ppo_device, self.seq_len)
         self.algo_observer.after_init(self)
         
+        # #GENE : for wandb logging
+        # self.wandb_activate = config.get('wandb_activate',False)
+        # self.log_wandb_frequency = config.get('log_wandb_frequency',-1)
+        # self.init_wandb = False
+        # self.num_rewards = config.get('num_rewards',1) + config.get('num_extra_logging',1)
+        # # if (self.terrain_cfg.curriculum and self.terrain_cfg.mesh_type in ["heightfield", "trimesh"]):
+        # #     self.num_rewards += self.terrain_cfg.num_cols
+        # self.reward_names = []
+        # self.current_specific_rewards = torch.zeros((self.num_actors*self.num_agents,self.num_rewards),dtype=torch.float32, device=self.ppo_device)
+        
         return
 
     def init_tensors(self):
@@ -112,6 +124,11 @@ class CommonAgent(a2c_continuous.A2CAgent):
         return
 
     def train(self):
+        # print('Started to train common agent')
+        # print('Started to train common agent')
+        # print('Started to train common agent')
+        # print('Started to train common agent')
+        # print('Started to train common agent')
         self.init_tensors()
         self.last_mean_rewards = -100500
         start_time = time.time()
@@ -169,6 +186,34 @@ class CommonAgent(a2c_continuous.A2CAgent):
 
                     if self.has_self_play_config:
                         self.self_play_manager.update(self)
+                    
+                    # #GENE : Adding line for logging wandb
+                    # # for k, v in train_info.items():
+                    # #     print(k, v)
+                    # a_losses = torch_ext.mean_list(train_info['actor_loss'])
+                    # c_losses = torch_ext.mean_list(train_info['critic_loss'])
+                    # b_losses = torch_ext.mean_list(train_info['b_loss'])
+                    # entropies = torch_ext.mean_list(train_info['entropy'])
+                    # kls = torch_ext.mean_list(train_info['kl'])
+                    # clip_fracs = torch_ext.mean_list(train_info['actor_clip_frac'])
+                    # mean_specific_rewards = self.game_rewards.get_mean()
+                    
+                    # #GENE : Adding line for logging wandb
+                    # if self.wandb_activate:
+                    #     self.log_wandb(
+                    #     self.frame,
+                    #     epoch_num,
+                    #     mean_rewards,
+                    #     mean_lengths,
+                    #     a_losses, 
+                    #     b_losses,
+                    #     c_losses,
+                    #     entropies,
+                    #     kls,
+                    #     clip_fracs,
+                    #     mean_specific_rewards,
+                    #     self.reward_names
+                    #     )
 
                 if self.save_freq > 0:
                     if (epoch_num % self.save_freq == 0):
@@ -301,6 +346,11 @@ class CommonAgent(a2c_continuous.A2CAgent):
 
             self.current_rewards = self.current_rewards * not_dones.unsqueeze(1)
             self.current_lengths = self.current_lengths * not_dones
+            
+            # #GENE: updating specific rewards for wandb
+            # if 'reward_names' in infos and 'stacked_rewards' in infos:
+            #     self.reward_names = infos['reward_names']
+            #     self.current_specific_rewards = infos['stacked_rewards']
 
         mb_fdones = self.experience_buffer.tensor_dict['dones'].float()
         mb_values = self.experience_buffer.tensor_dict['values']
@@ -527,3 +577,73 @@ class CommonAgent(a2c_continuous.A2CAgent):
         self.writer.add_scalar('info/clip_frac', torch_ext.mean_list(train_info['actor_clip_frac']).item(), frame)
         self.writer.add_scalar('info/kl', torch_ext.mean_list(train_info['kl']).item(), frame)
         return
+
+
+    #GENE : Function for logging wandb
+    def log_wandb(
+        self,
+        frame,
+        epoch_num,
+        mean_rewards,
+        mean_lengths,
+        a_losses, 
+        b_losses,
+        c_losses,
+        entropies,
+        kls,
+        clip_fracs,
+        specific_mean_rewards,
+        reward_names
+    ):
+        if self.init_wandb is False:
+            os.environ['WANDB_API_KEY'] = 'eea396051b98484ce4cc27d6abab8de9871491e4'
+            wandb.init(project=self.config['name'], tensorboard = False)
+            if(self.config['name']=='DyrosTocabiWalk'):
+                wandb.save(os.path.join(os.getcwd(), 'cfg/task/DyrosTocabiWalk.yaml'), policy="now")
+                wandb.save(os.path.join(os.getcwd(), 'cfg/train/DyrosTocabiWalkPPO.yaml'), policy="now")
+                wandb.save(os.path.join(os.getcwd(), 'tasks/dyros_tocabi_walk.py'), policy="now")
+            if(self.config['name']=='DyrosTocabiSquat'):
+                wandb.save(os.path.join(os.getcwd(), 'cfg/task/DyrosTocabiSquat.yaml'), policy="now")
+                wandb.save(os.path.join(os.getcwd(), 'cfg/train/DyrosTocabiSquatPPO.yaml'), policy="now")
+                wandb.save(os.path.join(os.getcwd(), 'tasks/dyros_tocabi_squat.py'), policy="now")
+            if(self.config['name']=='TocabiNewWalk'):
+                wandb.save(os.path.join(os.getcwd(), 'cfg/task/TocabiNewWalk.yaml'), policy="now")
+                wandb.save(os.path.join(os.getcwd(), 'cfg/train/TocabiNewWalkPPO.yaml'), policy="now")
+                wandb.save(os.path.join(os.getcwd(), 'tasks/tocabi_new_walk.py'), policy="now")
+            if(self.config['name']=='DyrosDynamicWalk'):
+                wandb.save(os.path.join(os.getcwd(), 'cfg/task/DyrosDynamicWalk.yaml'), policy="now")
+                wandb.save(os.path.join(os.getcwd(), 'cfg/train/DyrosDynamicWalkPPO.yaml'), policy="now")
+                wandb.save(os.path.join(os.getcwd(), 'tasks/dyros_dynamic_walk.py'), policy="now")
+            wandb.save(os.path.join(os.getcwd(), '../assets/mjcf/dyros_tocabi/xml/dyros_tocabi.xml'), policy="now")
+            wandb.save(os.path.join(os.getcwd(), 'tasks/base/vec_task.py'), policy="now")
+            self.init_wandb = True
+            self.init_wandb_time = time.time()
+        
+
+        if (epoch_num % (self.log_wandb_frequency*self.mini_epochs_num) == 0):
+            wandb_time = time.time()
+            wandb_dict = dict()
+            wandb_dict["serial_timesteps"] = epoch_num * self.horizon_length
+            wandb_dict["n_updates"] = epoch_num
+            wandb_dict["total_timesteps"] = frame
+            wandb_dict["fps"] = int(self.frame / (wandb_time - self.init_wandb_time)) 
+            wandb_dict['ep_reward_mean'] = mean_rewards.item()
+            wandb_dict["ep_len_mean"] = mean_lengths.item()
+
+            for i in range(self.num_rewards):
+                wandb_dict["rollout/"+reward_names[i]] = specific_mean_rewards[i].item()
+            #################
+            wandb_dict["time_elapsed"] = int(wandb_time - self.init_wandb_time)
+            wandb_dict["train/entropy_loss"] = torch_ext.mean_list(entropies).item()
+            wandb_dict["train/policy_gradient_loss"] = torch_ext.mean_list(a_losses).item() #GENE:actor Loss
+            wandb_dict["train/value_loss"] = torch_ext.mean_list(c_losses).item() #GENE: Critic Loss
+            wandb_dict["train/kl"] = torch_ext.mean_list(kls).item()
+            wandb_dict["train/clip_fracs"] = torch_ext.mean_list(clip_fracs).item()
+            losses = []
+            for i in range(len(a_losses)):
+                losses.append(a_losses[i] + 0.5 * c_losses[i] * self.critic_coef- entropies[i] * self.entropy_coef\
+                + b_losses[i] * self.bounds_loss_coef)
+            wandb_dict["train/loss"] = torch_ext.mean_list(losses).item() #GENE: Total Loss
+            #wandb_dict["train/explained_variance"] =  
+            wandb.log(wandb_dict)
+            

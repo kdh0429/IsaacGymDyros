@@ -70,6 +70,7 @@ params:
     kl_threshold: 0.008
     score_to_win: 20000
     max_epochs: ${resolve_default:5000,${....max_iterations}}
+    # max_epochs: 10000
     save_best_after: 100
     save_frequency: 100
     print_stats: True
@@ -77,8 +78,8 @@ params:
     entropy_coef: 0.0
     truncate_grads: False
     e_clip: 0.2
-    horizon_length: 32 #32 # batch size per actor
-    minibatch_size: 131072 #98304 #131072 #524288  # minibatch size 4096 * 64, 128
+    horizon_length: 16 #32 # batch size per actor
+    minibatch_size: 32768 #98304 #131072 #524288  # minibatch size 4096 * 64, 128
     mini_epochs: 6
     critic_coef: 5 #0.5
     clip_value: False
@@ -88,7 +89,7 @@ params:
     amp_replay_buffer_size: 1000000
     amp_replay_keep_prob: 0.01
     amp_batch_size: 512
-    amp_minibatch_size: 131072 #32768 # 4096*8
+    amp_minibatch_size: 16384 #32768 # 4096*8
     disc_coef: 5
     disc_logit_reg: 0.05
     disc_grad_penalty: 0.1
@@ -100,3 +101,7 @@ params:
     disc_reward_w: 0.3
 
     print_disc_prediction: False
+    wandb_activate: True # True, False
+    log_wandb_frequency: 10
+    num_rewards: 9 #Modify with individual tasks 
+    num_extra_logging: 1

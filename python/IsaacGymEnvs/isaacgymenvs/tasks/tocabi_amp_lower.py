@@ -82,7 +82,7 @@ class TocabiAMPLower(TocabiAMPLowerBase):
         self._hist_amp_obs_buf = self._amp_obs_buf[:, 1:]
         
         self._amp_obs_demo_buf = None
-
+ 
         return
 
     def post_physics_step(self):
