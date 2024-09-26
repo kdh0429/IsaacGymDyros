@@ -83,7 +83,7 @@ params:
     use_estimator_network: True
     e_clip: 0.2
     horizon_length: 128    # DH: u may play with this
-    minibatch_size: 4096  # DH: u may play with this (num_envs*horizon_length/mini_batch_size should be minibatch_size!!!!!!!!!!)
+    minibatch_size: 16384 #4096  # DH: u may play with this (num_envs*horizon_length/mini_batch_size should be minibatch_size!!!!!!!!!!)
     mini_epochs: 5
     critic_coef: 0.5
     clip_value: False

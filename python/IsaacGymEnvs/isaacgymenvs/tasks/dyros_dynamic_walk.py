@@ -30,6 +30,7 @@ class DyrosDynamicWalk(VecTask):
         self.termination_height = self.cfg["env"]["terminationHeight"]
 
         self.debug_viz = self.cfg["env"]["enableDebugVis"]
+        self.camera_follow = self.cfg["env"]["viewer"].get("cameraFollow", False)
 
         self.max_episode_length_s = self.cfg["env"]["episodeLength"]
         # self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * self.cfg["env"].get("controlFrequencyInv", 8)) #? 32/(0.001 x 4) = 8000
@@ -52,14 +53,6 @@ class DyrosDynamicWalk(VecTask):
 
         super().__init__(config=self.cfg, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless)
 
-        if self.viewer != None:
-            #rui - cam
-            # cam_pos = gymapi.Vec3(50.0, 25.0, 2.4)
-            # cam_target = gymapi.Vec3(45.0, 25.0, 0.0)
-            # self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
-            self.camera_follow = self.cfg["env"]["viewer"].get("cameraFollow", True)
-            self.camera_offset = gymapi.Vec3(*self.cfg["env"]["viewer"].get("cameraOffset", [0.0, 0.0, 2.0]))
-            
         #for PD controll
         self.Kp = torch.tensor([2000.0, 5000.0, 4000.0, 3700.0, 3200.0, 3200.0,
             2000.0, 5000.0, 4000.0, 3700.0, 3200.0, 3200.0,
@@ -220,6 +213,9 @@ class DyrosDynamicWalk(VecTask):
         #util
         self.ones = torch.ones(self.num_envs, device=self.device)
         self.zeros = torch.zeros(self.num_envs, device=self.device)
+        
+        if self.viewer != None:
+            self.init_camera()
        
     def create_sim(self):
         self.up_axis_idx = 2 # index of up axis: Y=1, Z=2
@@ -576,7 +572,7 @@ class DyrosDynamicWalk(VecTask):
             stop_torque = self.Kp*(self.initial_dof_pos[:,:] - self.dof_pos[:,:]) + self.Kv*(-self.dof_vel[:,:])
             
             #action_log -> tensor(num_envs, time(current~past 9), dofs(33))
-            self.action_log[:,0:-1,:] = self.action_log[:,1:,:] #[self.num_envs, round(0.01/self.dt)+1, 12] #rui - 3D tensor moves the values from index 1 to round(0.01/self.dt)+1 -1 to indices 0 to round(0.01/self.dt)+1 -2
+            self.action_log[:,0:-1,:] = self.action_log[:,1:,:].clone() #[self.num_envs, round(0.01/self.dt)+1, 12] #rui - 3D tensor moves the values from index 1 to round(0.01/self.dt)+1 -1 to indices 0 to round(0.01/self.dt)+1 -2
             self.action_log[:,-1,:] = self.action_torque
             self.simul_len_tensor[:,1] +=1
             self.simul_len_tensor[:,1] = self.simul_len_tensor[:,1].clamp(max=round(0.03/self.dt)+1, min=0) #rui - clamps 2nd col between between 0 and round(0.01/self.dt)+1 1~16
@@ -824,28 +820,47 @@ class DyrosDynamicWalk(VecTask):
             
             #SECTION - for diff rew for every sim step starts here
             #power  joint torque * vel -tou transpose qdot
-            self.contact_forces_pre_rewdiff = self.contact_forces.clone()
-            self.actions_pre_rewdiff = self.actions.clone()
+            # self.contact_forces_pre_rewdiff = self.contact_forces.clone()
+            # self.actions_pre_rewdiff = self.actions.clone()
             
             lfoot_force_rewdiff = self.contact_forces[:,self.left_foot_idx,0:3]
-            rfoot_force_rewdiff = self.contact_forces[:,self.right_foot_idx,0:3] 
-
+            rfoot_force_rewdiff = self.contact_forces[:,self.right_foot_idx,0:3]
+             
             lfoot_force_pre_rewdiff = self.contact_forces_pre_rewdiff[:,self.left_foot_idx,0:3]
             rfoot_force_pre_rewdiff = self.contact_forces_pre_rewdiff[:,self.right_foot_idx,0:3]
+            
+            # print("self.actions_pre_rewdiff[0,0:-1]")
+            # print(self.actions_pre_rewdiff[0,0:-1])
+            # print("rfoot_force_pre_rewdiff[0]")
+            # print(self.contact_forces_pre_rewdiff[0,self.right_foot_idx,0:3])
+            
             
             torque_diff_regulation_rewdiff = 0.6 * torch.exp(-0.01*torch.norm((actions[:,0:-1]-self.actions_pre_rewdiff[:,0:-1])*333 , dim=1))
             contact_force_diff_regulation_rewdiff = 0.2 * torch.exp(-0.01*(torch.norm((lfoot_force_rewdiff[:]-lfoot_force_pre_rewdiff[:]), dim=1) + \
                                                             torch.norm((rfoot_force_rewdiff[:]-rfoot_force_pre_rewdiff[:]), dim=1)))
             
-            left_foot_thres_diff_rewdiff = torch.abs(lfoot_force_rewdiff[:,2]-lfoot_force_pre_rewdiff[:,2]).unsqueeze(-1) > 0.2*9.81*self.total_mass
+            left_foot_thres_diff_rewdiff = torch.abs(lfoot_force_rewdiff[:,2]-lfoot_force_pre_rewdiff[:,2]).unsqueeze(-1) > 0.2*9.81*self.total_mass #NOTE - original
             right_foot_thres_diff_rewdiff = torch.abs(rfoot_force_rewdiff[:,2]-rfoot_force_pre_rewdiff[:,2]).unsqueeze(-1) > 0.2*9.81*self.total_mass
+            # left_foot_thres_diff_rewdiff = torch.abs(lfoot_force_rewdiff[:,2]-lfoot_force_pre_rewdiff[:,2]).unsqueeze(-1) > 0.1*9.81*self.total_mass
+            # right_foot_thres_diff_rewdiff = torch.abs(rfoot_force_rewdiff[:,2]-rfoot_force_pre_rewdiff[:,2]).unsqueeze(-1) > 0.1*9.81*self.total_mass
             thres_diff_rewdiff = left_foot_thres_diff_rewdiff | right_foot_thres_diff_rewdiff
             
-            force_diff_thres_penalty_rewdiff = torch.where(thres_diff_rewdiff.squeeze(-1), -0.05*self.ones[:], self.zeros[:])
+            # lfoot_force_pre_rewdiff = lfoot_force_rewdiff
+            # rfoot_force_pre_rewdiff = rfoot_force_rewdiff
+            # print("torch.abs(lfoot_force_rewdiff[0,2]-lfoot_force_pre_rewdiff[0,2]).unsqueeze(-1)")
+            # print(torch.abs(lfoot_force_rewdiff[0,2]-lfoot_force_pre_rewdiff[0,2]).unsqueeze(-1))
+            # print("torch.abs(rfoot_force_rewdiff[0,2]-rfoot_force_pre_rewdiff[0,2]).unsqueeze(-1)")
+            # print(torch.abs(rfoot_force_rewdiff[0,2]-rfoot_force_pre_rewdiff[0,2]).unsqueeze(-1))
+            
+            force_diff_thre
+            s_penalty_rewdiff = torch.where(thres_diff_rewdiff.squeeze(-1), -0.05*self.ones[:], self.zeros[:])
             
             torque_diff_regulation_rewdiff_list.append(torque_diff_regulation_rewdiff)
             contact_force_diff_regulation_rewdiff_list.append(contact_force_diff_regulation_rewdiff)
             force_diff_thres_penalty_rewdiff_list.append(force_diff_thres_penalty_rewdiff)
+            
+            self.contact_forces_pre_rewdiff = self.contact_forces.clone()
+            self.actions_pre_rewdiff[:,0:-1] = actions[:,0:-1]
             
             
             #!SECTION - for diff rew for every sim step ends here
@@ -872,6 +887,14 @@ class DyrosDynamicWalk(VecTask):
         #time update
         # self.time += self.dt_policy
         self.time += 5*self.dt_policy*self.actions[:,-1].unsqueeze(-1)
+        
+    def render(self):
+        if self.viewer and self.camera_follow:
+            print(self.target_vel[0,:])
+            self.update_camera()
+
+        super().render()
+        return
 
     def post_physics_step(self):
         self.progress_buf += 1
@@ -897,9 +920,7 @@ class DyrosDynamicWalk(VecTask):
         self.contact_forces_pre = self.contact_forces.clone()
         self.actions_pre = self.actions.clone()
         
-        #rui - cam
-        if self.viewer is not None and self.camera_follow:
-            self.update_camera()
+
 
         # with open('force_data.txt', 'a') as f:
         #     # f.write('lfoot:')
@@ -918,10 +939,40 @@ class DyrosDynamicWalk(VecTask):
     
     #rui - cam
     def update_camera(self):
-        base_pos = self.root_states[0, :3].cpu().numpy()  # Assuming single robot
-        cam_pos = gymapi.Vec3(base_pos[0] + self.camera_offset.x, base_pos[1] + self.camera_offset.y, base_pos[2] + self.camera_offset.z)
-        cam_target = gymapi.Vec3(base_pos[0], base_pos[1], base_pos[2])
+        # base_pos = self.root_states[0, :3].cpu().numpy()  # Assuming single robot
+        # cam_pos = gymapi.Vec3(base_pos[0] + self.camera_offset.x, base_pos[1] + self.camera_offset.y, base_pos[2] + self.camera_offset.z)
+        # cam_target = gymapi.Vec3(base_pos[0], base_pos[1], base_pos[2])
+        # self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
+        
+        self.gym.refresh_actor_root_state_tensor(self.sim)
+        char_root_pos = self.root_states[0, 0:3].cpu().numpy()
+        
+        cam_trans = self.gym.get_viewer_camera_transform(self.viewer, None)
+        cam_pos = np.array([cam_trans.p.x, cam_trans.p.y, cam_trans.p.z])
+        cam_delta = cam_pos - self._cam_prev_char_pos
+
+        new_cam_target = gymapi.Vec3(char_root_pos[0], char_root_pos[1], 1.0)
+        new_cam_pos = gymapi.Vec3(char_root_pos[0] + cam_delta[0], 
+                                  char_root_pos[1] + cam_delta[1], 
+                                  cam_pos[2])
+
+        self.gym.viewer_camera_look_at(self.viewer, None, new_cam_pos, new_cam_target)
+
+        self._cam_prev_char_pos[:] = char_root_pos
+        return
+    
+    def init_camera(self):
+        self.gym.refresh_actor_root_state_tensor(self.sim)
+        self._cam_prev_char_pos = self.root_states[0, 0:3].cpu().numpy()
+        
+        cam_pos = gymapi.Vec3(self._cam_prev_char_pos[0], 
+                              self._cam_prev_char_pos[1] - 3.0, 
+                              1.0)
+        cam_target = gymapi.Vec3(self._cam_prev_char_pos[0],
+                                 self._cam_prev_char_pos[1],
+                                 1.0)
         self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
+        return
 
     def check_termination(self):
         # reset agents
