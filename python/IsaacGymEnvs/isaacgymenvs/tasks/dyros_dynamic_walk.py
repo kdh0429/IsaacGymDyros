@@ -852,8 +852,7 @@ class DyrosDynamicWalk(VecTask):
             # print("torch.abs(rfoot_force_rewdiff[0,2]-rfoot_force_pre_rewdiff[0,2]).unsqueeze(-1)")
             # print(torch.abs(rfoot_force_rewdiff[0,2]-rfoot_force_pre_rewdiff[0,2]).unsqueeze(-1))
             
-            force_diff_thre
-            s_penalty_rewdiff = torch.where(thres_diff_rewdiff.squeeze(-1), -0.05*self.ones[:], self.zeros[:])
+            force_diff_thres_penalty_rewdiff = torch.where(thres_diff_rewdiff.squeeze(-1), -0.05*self.ones[:], self.zeros[:])
             
             torque_diff_regulation_rewdiff_list.append(torque_diff_regulation_rewdiff)
             contact_force_diff_regulation_rewdiff_list.append(contact_force_diff_regulation_rewdiff)
