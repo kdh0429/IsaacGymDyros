@@ -24,15 +24,15 @@ motions:
   - file: "tocabi_lower_walk(step0.2,height0.0).txt"
     weight: 0.5
     step_time: 0.9
-    play_speed: 1.0
+    play_speed: 0.9
   # - file: "tocabi_lower_walk(step0.2,height0.0).txt"
   #   weight: 0.5
   #   step_time: 0.9
-  #   play_speed: 1.2
+  #   play_speed: 1.1
   - file: "tocabi_lower_walk(step0.2,height0.0).txt"
     weight: 0.5
     step_time: 0.9
-    play_speed: 1.5
+    play_speed: 1.3
 
 
   

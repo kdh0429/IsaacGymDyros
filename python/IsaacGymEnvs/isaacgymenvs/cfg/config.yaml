@@ -58,7 +58,8 @@ hydra:
 wandb_activate: True
 wandb_group: ''
 wandb_name: ${train.params.config.name}
+# wandb_name: 'TocabiAMPLower'
 wandb_entity: ''
-wandb_project: 'isaacgymenvs'
+wandb_project: 'TocabiAMPLower'
 wandb_tags: []
 wandb_logcode_dir: '' 
