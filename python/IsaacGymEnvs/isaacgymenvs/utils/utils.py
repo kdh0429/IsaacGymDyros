@@ -32,6 +32,32 @@ import numpy as np
 import torch
 import random
 import os
+import time
+
+def retry(times, exceptions):
+    """
+    Retry Decorator https://stackoverflow.com/a/64030200/1645784
+    Retries the wrapped function/method `times` times if the exceptions listed
+    in ``exceptions`` are thrown
+    :param times: The number of times to repeat the wrapped function/method
+    :type times: Int
+    :param exceptions: Lists of exceptions that trigger a retry attempt
+    :type exceptions: Tuple of Exceptions
+    """
+    def decorator(func):
+        def newfn(*args, **kwargs):
+            attempt = 0
+            while attempt < times:
+                try:
+                    return func(*args, **kwargs)
+                except exceptions:
+                    print(f'Exception thrown when attempting to run {func}, attempt {attempt} out of {times}')
+                    time.sleep(min(2 ** attempt, 30))
+                    attempt += 1
+
+            return func(*args, **kwargs)
+        return newfn
+    return decorator
 
 def set_np_formatting():
     """ formats numpy print """

@@ -97,6 +97,34 @@ def get_rlgames_env_creator(
         return env
     return create_rlgpu_env
 
+class MultiObserver(AlgoObserver):
+    """Meta-observer that allows the user to add several observers."""
+
+    def __init__(self, observers_):
+        super().__init__()
+        self.observers = observers_
+
+    def _call_multi(self, method, *args_, **kwargs_):
+        for o in self.observers:
+            getattr(o, method)(*args_, **kwargs_)
+
+    def before_init(self, base_name, config, experiment_name):
+        self._call_multi('before_init', base_name, config, experiment_name)
+
+    def after_init(self, algo):
+        self._call_multi('after_init', algo)
+
+    def process_infos(self, infos, done_indices):
+        self._call_multi('process_infos', infos, done_indices)
+
+    def after_steps(self):
+        self._call_multi('after_steps')
+
+    def after_clear_stats(self):
+        self._call_multi('after_clear_stats')
+
+    def after_print_stats(self, frame, epoch_num, total_time):
+        self._call_multi('after_print_stats', frame, epoch_num, total_time)
 
 class RLGPUAlgoObserver(AlgoObserver):
     """Allows us to log stats from the env along with the algorithm running stats. """

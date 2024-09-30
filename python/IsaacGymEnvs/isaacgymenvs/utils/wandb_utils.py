@@ -2,6 +2,7 @@ from rl_games.common.algo_observer import AlgoObserver
 
 from isaacgymenvs.utils.utils import retry
 from isaacgymenvs.utils.reformat import omegaconf_to_dict
+import datetime
 
 
 class WandbAlgoObserver(AlgoObserver):
@@ -18,10 +19,17 @@ class WandbAlgoObserver(AlgoObserver):
         """
 
         import wandb
+        
+        starttime = datetime.datetime.now()  # Keep the original datetime object
 
-        wandb_unique_id = f"uid_{experiment_name}"
+        timestampint = int(starttime.timestamp())
+
+        # Get the formatted timestamp for other purposes if needed
+        formatted_starttime = starttime.strftime("%Y-%m-%d_%H-%M-%S")
+        
+        wandb_unique_id = f"uid_{experiment_name}_{timestampint}"
         print(f"Wandb using unique id {wandb_unique_id}")
-
+        experiment_name = f"{experiment_name}_{formatted_starttime}"
         cfg = self.cfg
 
         # this can fail occasionally, so we try a couple more times
@@ -37,6 +45,7 @@ class WandbAlgoObserver(AlgoObserver):
                 name=experiment_name,
                 resume=True,
                 settings=wandb.Settings(start_method='fork'),
+                
             )
        
             if cfg.wandb_logcode_dir:
