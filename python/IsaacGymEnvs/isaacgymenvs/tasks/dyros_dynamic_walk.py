@@ -127,6 +127,7 @@ class DyrosDynamicWalk(VecTask):
         #for random target velocity
         vel_mag = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*1.0
         vel_theta = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
+        
         x_vel_target = vel_mag[:] * torch.cos(vel_theta[:])
         y_vel_target = vel_mag[:] * torch.sin(vel_theta[:])
         self.target_vel =  torch.cat([x_vel_target,y_vel_target],dim=1)
