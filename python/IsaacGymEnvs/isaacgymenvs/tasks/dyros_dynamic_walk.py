@@ -125,7 +125,7 @@ class DyrosDynamicWalk(VecTask):
         self.qvel_noise = torch.zeros_like(self.dof_vel)
         self.qpos_pre = torch.zeros_like(self.dof_pos)
         #for random target velocity
-        vel_mag = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*1.0
+        vel_mag = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.8
         vel_theta = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
         x_vel_target = vel_mag[:] * torch.cos(vel_theta[:])
         y_vel_target = vel_mag[:] * torch.sin(vel_theta[:])
@@ -835,7 +835,7 @@ class DyrosDynamicWalk(VecTask):
             # print(self.contact_forces_pre_rewdiff[0,self.right_foot_idx,0:3])
             
             
-            torque_diff_regulation_rewdiff = 0.6 * torch.exp(-0.01*torch.norm((actions[:,0:-1]-self.actions_pre_rewdiff[:,0:-1])*333 , dim=1))
+            torque_diff_regulation_rewdiff = 1.0 * torch.exp(-0.01*torch.norm((actions[:,0:-1]-self.actions_pre_rewdiff[:,0:-1])*333 , dim=1))
             contact_force_diff_regulation_rewdiff = 0.2 * torch.exp(-0.01*(torch.norm((lfoot_force_rewdiff[:]-lfoot_force_pre_rewdiff[:]), dim=1) + \
                                                             torch.norm((rfoot_force_rewdiff[:]-rfoot_force_pre_rewdiff[:]), dim=1)))
             
@@ -852,8 +852,7 @@ class DyrosDynamicWalk(VecTask):
             # print("torch.abs(rfoot_force_rewdiff[0,2]-rfoot_force_pre_rewdiff[0,2]).unsqueeze(-1)")
             # print(torch.abs(rfoot_force_rewdiff[0,2]-rfoot_force_pre_rewdiff[0,2]).unsqueeze(-1))
             
-            force_diff_thre
-            s_penalty_rewdiff = torch.where(thres_diff_rewdiff.squeeze(-1), -0.05*self.ones[:], self.zeros[:])
+            force_diff_thres_penalty_rewdiff = torch.where(thres_diff_rewdiff.squeeze(-1), -0.05*self.ones[:], self.zeros[:])
             
             torque_diff_regulation_rewdiff_list.append(torque_diff_regulation_rewdiff)
             contact_force_diff_regulation_rewdiff_list.append(contact_force_diff_regulation_rewdiff)
@@ -1017,7 +1016,7 @@ class DyrosDynamicWalk(VecTask):
         self._reset_dof_states(env_ids)
 
         # reset target_vel & initial mocap_data (starting foot)
-        vel_mag = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*1.0
+        vel_mag = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*0.8
         vel_theta = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
         x_vel_target = vel_mag[:] * torch.cos(vel_theta[:])
         y_vel_target = vel_mag[:] * torch.sin(vel_theta[:])
