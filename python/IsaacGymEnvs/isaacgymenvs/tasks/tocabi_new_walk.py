@@ -103,6 +103,7 @@ class TocabiNewWalk(VecTask):
         self.init_mocap_data_idx = torch.zeros(self.num_envs,1,device=self.device, dtype=torch.long)
         self.mocap_data_idx = torch.zeros(self.num_envs,1,device=self.device, dtype=torch.long)
         mocap_data_non_torch = np.genfromtxt('../assets/DeepMimic/processed_data_tocabi_walk.txt',encoding='ascii') 
+        
         self.mocap_data = torch.tensor(mocap_data_non_torch,device=self.device, dtype=torch.float)
         self.mocap_data_num = int(self.mocap_data.shape[0] - 1)
         self.mocap_cycle_dt = 0.0005

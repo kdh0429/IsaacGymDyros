@@ -125,7 +125,7 @@ class DyrosDynamicWalk(VecTask):
         self.qvel_noise = torch.zeros_like(self.dof_vel)
         self.qpos_pre = torch.zeros_like(self.dof_pos)
         #for random target velocity
-        vel_mag = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*1.0
+        vel_mag = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.8
         vel_theta = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
         
         x_vel_target = vel_mag[:] * torch.cos(vel_theta[:])
@@ -853,7 +853,8 @@ class DyrosDynamicWalk(VecTask):
             # print("torch.abs(rfoot_force_rewdiff[0,2]-rfoot_force_pre_rewdiff[0,2]).unsqueeze(-1)")
             # print(torch.abs(rfoot_force_rewdiff[0,2]-rfoot_force_pre_rewdiff[0,2]).unsqueeze(-1))
             
-            force_diff_thres_penalty_rewdiff = torch.where(thres_diff_rewdiff.squeeze(-1), -0.05*self.ones[:], self.zeros[:])
+            # force_diff_thres_penalty_rewdiff = torch.where(thres_diff_rewdiff.squeeze(-1), -0.05*self.ones[:], self.zeros[:])
+            force_diff_thres_penalty_rewdiff = torch.where(thres_diff_rewdiff.squeeze(-1), -0.1*self.ones[:], self.zeros[:])
             
             torque_diff_regulation_rewdiff_list.append(torque_diff_regulation_rewdiff)
             contact_force_diff_regulation_rewdiff_list.append(contact_force_diff_regulation_rewdiff)
@@ -1017,7 +1018,7 @@ class DyrosDynamicWalk(VecTask):
         self._reset_dof_states(env_ids)
 
         # reset target_vel & initial mocap_data (starting foot)
-        vel_mag = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*1.0
+        vel_mag = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*0.8
         vel_theta = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
         x_vel_target = vel_mag[:] * torch.cos(vel_theta[:])
         y_vel_target = vel_mag[:] * torch.sin(vel_theta[:])
@@ -1249,7 +1250,7 @@ def compute_humanoid_walk_reward(
     mimic_body_orientation_reward = 0.3 * torch.exp(-13.2 * torch.abs(quat_error)) 
     #calculate joint position & velocity & regulate with target
     # qpos_regulation = 0.35 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2) #NOTE - orig
-    qpos_regulation = 0.45 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2) #NOTE - orig
+    qpos_regulation = 0.8 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2)
     
     #calculate difference between initial q_vel, and q_vel now
     qvel_regulation = 0.05 * torch.exp(-0.01 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2) #NOTE - orig
@@ -1274,13 +1275,13 @@ def compute_humanoid_walk_reward(
     # contact_force_penalty = 0.1 * torch.exp(-0.0005*(torch.norm(lfoot_force[:], dim=1) + torch.norm(rfoot_force[:], dim=1)))
     # contact_force_diff_regulation = 0.2 * torch.exp(-0.01*policy_freq_scale*(torch.norm(lfoot_force[:]-lfoot_force_pre[:], dim=1) + \ #NOTE - orig
     #                                                         torch.norm(rfoot_force[:]-rfoot_force_pre[:], dim=1)))
-    contact_force_diff_regulation = 0.2 * torch.exp(-0.01*(torch.norm((lfoot_force[:]-lfoot_force_pre[:])*policy_freq_scale, dim=1) + \
-                                                            torch.norm((rfoot_force[:]-rfoot_force_pre[:])*policy_freq_scale, dim=1)))
+    # contact_force_diff_regulation = 0.2 * torch.exp(-0.01*(torch.norm((lfoot_force[:]-lfoot_force_pre[:])*policy_freq_scale, dim=1) + \
+    #                                                         torch.norm((rfoot_force[:]-rfoot_force_pre[:])*policy_freq_scale, dim=1)))
     #calculate torque input cost
     torque_regulation = 0.05 * torch.exp(-0.01 * torch.norm((actions[:,0:-1])*333,dim=1))
     #penalize difference of torque values
     # torque_diff_regulation = 0.6 * torch.exp(-0.01*policy_freq_scale * torch.norm((actions[:,0:-1]-actions_pre[:,0:-1])*333, dim=1)) #NOTE - orig
-    torque_diff_regulation = 0.6 * torch.exp(-0.01*torch.norm((actions[:,0:-1]-actions_pre[:,0:-1])*333*policy_freq_scale , dim=1))
+    # torque_diff_regulation = 0.6 * torch.exp(-0.01*torch.norm((actions[:,0:-1]-actions_pre[:,0:-1])*333*policy_freq_scale , dim=1))
     #penalize difference of dof_velocities
     qacc_regulation = 0.05 * torch.exp(-20.0*torch.norm((joint_velocity_states[:,0:]-pre_joint_velocity_states[:,0:]), dim=1)**2)
     #track body velocity difference between target & state
@@ -1289,7 +1290,7 @@ def compute_humanoid_walk_reward(
     #compare & track if foot contact phase synchronizes with refrence motion
     left_foot_contact = (lfoot_force[:,2].unsqueeze(-1) > 1.)
     right_foot_contact = (rfoot_force[:,2].unsqueeze(-1) > 1.)
-  
+    
     
     ones = torch.ones_like(body_vel_reward)
     zeros = torch.zeros_like(body_vel_reward)
@@ -1329,7 +1330,7 @@ def compute_humanoid_walk_reward(
     left_foot_thres_diff = torch.abs(lfoot_force[:,2]-lfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass
     right_foot_thres_diff = torch.abs(rfoot_force[:,2]-rfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass
     thres_diff = left_foot_thres_diff | right_foot_thres_diff
-    force_diff_thres_penalty = torch.where(thres_diff.squeeze(-1), -0.05*ones[:], zeros[:])    
+    # force_diff_thres_penalty = torch.where(thres_diff.squeeze(-1), -0.05*ones[:], zeros[:])    
 
     #Ignoring regulation terms
     # qacc_regulation *= 0
