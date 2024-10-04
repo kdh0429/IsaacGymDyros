@@ -18,11 +18,17 @@ from .base.vec_task import VecTask
 from isaacgymenvs.cfg.terrain.terrain_cfg import TerrainCfg
 from isaacgymenvs.utils.terrain import Terrain
 
+import datetime
 
 class TocabiFootHeight(VecTask):
 
     def __init__(self, cfg, sim_device, graphics_device_id, headless):
         self.cfg = cfg
+
+        self.current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.task_name = self.cfg["name"]
+        self.file_name = f"./result/{self.task_name}_data_{self.current_time}.csv"
+        self.writeFile = open(self.file_name, 'w')
 
         self.randomization_params = self.cfg["task"]["randomization_params"]
         self.randomize = self.cfg["task"]["randomize"]
@@ -195,6 +201,14 @@ class TocabiFootHeight(VecTask):
         self.action_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_action, dtype=torch.float, requires_grad=False, device=self.device)
 
         self.init_done = True
+
+    def data_logging(self):
+        self.lfoot_force = self.contact_forces[0,self.left_foot_idx,0:3]
+        self.rfoot_force = self.contact_forces[0,self.right_foot_idx,0:3]
+        self.writeFile.write(f"{self.lfoot_force[0]:.8f}\t{self.lfoot_force[1]:.8f}\t{self.lfoot_force[2]:.8f}\t")
+        self.writeFile.write(f"{self.rfoot_force[0]:.8f}\t{self.rfoot_force[1]:.8f}\t{self.rfoot_force[2]:.8f}\t")
+        self.writeFile.write(f"\n")
+
        
     def create_sim(self):
         self.up_axis_idx = 2 # index of up axis: Y=1, Z=2
@@ -548,6 +562,8 @@ class TocabiFootHeight(VecTask):
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
         # self.gym.refresh_rigid_body_state_tensor(self.sim)
+
+        # self.data_logging()
 
         self.check_termination()
         self.compute_reward()
