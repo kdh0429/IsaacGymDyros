@@ -34,6 +34,29 @@ env:
   # set to True if you use camera sensors in the environment
   enableCameraSensors: False
 
+  learn:
+    ## TASK ##
+    QPosMimicReward : 0.35
+    BodyVelocityReward : 0.3
+    ForceRefReward : 0.1
+
+    ## FOOTCONTACT ##
+    FootContactReward : 0.2
+
+    ## CONTACT FORCE PENALTIES ##
+    ContactForceThresholdPenalty : 0.1
+    ForceThresholdPenalty : -0.2
+    ForceDiffThresholdPenalty : -0.05
+
+    ## REGULARIZATION ##
+    MimicBodyOrientationReward : 0.3
+    QVelRegulationReward : 0.05
+    QAccRegulationReward : 0.05
+    TorqueRegulationReward : 0.05
+    TorqueDiffRegulationReward : 0.6
+    ContactForceDiffRegulationReward : 0.2
+    DoubleSupportDiffRegulationReward : 0.0
+
 sim:
   dt: 0.002 #0.0005 #0.004 # 0.0005 #1/2000 
   substeps: 1

@@ -54,6 +54,22 @@ class TocabiFootHeight(VecTask):
         
         self.init_done = False
 
+        self.rew_weights = {}
+        self.rew_weights["MimicBodyOrientationReward"] = self.cfg["env"]["learn"]["MimicBodyOrientationReward"]
+        self.rew_weights["QPosMimicReward"] = self.cfg["env"]["learn"]["QPosMimicReward"]
+        self.rew_weights["BodyVelocityReward"] = self.cfg["env"]["learn"]["BodyVelocityReward"]
+        self.rew_weights["ForceRefReward"] = self.cfg["env"]["learn"]["ForceRefReward"]
+        self.rew_weights["QVelRegulationReward"] = self.cfg["env"]["learn"]["QVelRegulationReward"]
+        self.rew_weights["QAccRegulationReward"] = self.cfg["env"]["learn"]["QAccRegulationReward"]
+        self.rew_weights["TorqueRegulationReward"] = self.cfg["env"]["learn"]["TorqueRegulationReward"]
+        self.rew_weights["TorqueDiffRegulationReward"] = self.cfg["env"]["learn"]["TorqueDiffRegulationReward"]
+        self.rew_weights["ContactForceDiffRegulationReward"] = self.cfg["env"]["learn"]["ContactForceDiffRegulationReward"]
+        self.rew_weights["DoubleSupportDiffRegulationReward"] = self.cfg["env"]["learn"]["DoubleSupportDiffRegulationReward"]
+        self.rew_weights["FootContactReward"] = self.cfg["env"]["learn"]["FootContactReward"]
+        self.rew_weights["ContactForceThresholdPenalty"] = self.cfg["env"]["learn"]["ContactForceThresholdPenalty"]
+        self.rew_weights["ForceThresholdPenalty"] = self.cfg["env"]["learn"]["ForceThresholdPenalty"]
+        self.rew_weights["ForceDiffThresholdPenalty"] = self.cfg["env"]["learn"]["ForceDiffThresholdPenalty"]   
+
         super().__init__(config=self.cfg, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless)
 
         if self.viewer != None:
@@ -115,7 +131,8 @@ class TocabiFootHeight(VecTask):
         #for Deep Mimic
         self.init_mocap_data_idx = torch.zeros(self.num_envs,1,device=self.device, dtype=torch.long)
         self.mocap_data_idx = torch.zeros(self.num_envs,1,device=self.device, dtype=torch.long)
-        mocap_data_non_torch = np.genfromtxt('../assets/DeepMimic/processed_data_tocabi_walk.txt',encoding='ascii') 
+        # mocap_data_non_torch = np.genfromtxt('../assets/DeepMimic/processed_data_tocabi_walk.txt',encoding='ascii')
+        mocap_data_non_torch = np.genfromtxt('../assets/DeepMimic/processed_data_tocabi_walk_250mm_20mm.txt',encoding='ascii') 
         self.mocap_data = torch.tensor(mocap_data_non_torch,device=self.device, dtype=torch.float)
         self.mocap_data_num = int(self.mocap_data.shape[0] - 1)
         self.mocap_cycle_dt = 0.0005
@@ -400,6 +417,7 @@ class TocabiFootHeight(VecTask):
 
     def compute_reward(self):
         self.rew_buf[:], reward, name, self.contact_reward_sum[:] = compute_humanoid_walk_reward(
+            self.rew_weights,
             self.reset_buf,
             self.progress_buf,
             self.target_vel,
@@ -535,6 +553,11 @@ class TocabiFootHeight(VecTask):
             # self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(total_torque))
             # self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(stop_torque))
             # self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(mocap_torque))
+
+            # self.root_states[:] = self.initial_root_states[:]
+            # self.root_states[:, :3] += self.env_origins[:]
+            # self.root_states[:,2] += 0.1
+            # self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states))
             
             self.gym.simulate(self.sim)
             self.gym.refresh_dof_state_tensor(self.sim)
@@ -817,6 +840,7 @@ class TocabiFootHeight(VecTask):
 
 @torch.jit.script
 def compute_humanoid_walk_reward(
+    rew_weights,
     reset_buf,
     progress_buf,
     target_vel,
@@ -841,18 +865,18 @@ def compute_humanoid_walk_reward(
     right_foot_idx,
     left_foot_idx
 ):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, List[int], Tensor, Tensor, Tensor, float, float, float, Tensor, Tensor, int, int) -> Tuple[Tensor, Tensor, List[str], Tensor]
+    # type: (Dict[str, float], Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, List[int], Tensor, Tensor, Tensor, float, float, float, Tensor, Tensor, int, int) -> Tuple[Tensor, Tensor, List[str], Tensor]
     
     #return angle difference between body(root link) quat & target quat (0,0,0,1)
     torso_rot = root_pose_states[:,3:7]
     identity_rot = torch.zeros_like(torso_rot)
     identity_rot[..., -1] = 1.
     quat_error = quat_diff_rad(identity_rot, torso_rot) #quat_error = normalize_angle(quat_error)
-    mimic_body_orientation_reward = 0.3 * torch.exp(-13.2 * torch.abs(quat_error)) 
+    mimic_body_orientation_reward = rew_weights["MimicBodyOrientationReward"] * torch.exp(-13.2 * torch.abs(quat_error)) 
     #calculate joint position & velocity & regulate with target
-    qpos_regulation = 0.35 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2)
+    qpos_regulation = rew_weights["QPosMimicReward"] * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2)
     #calculate difference between initial q_vel, and q_vel now
-    qvel_regulation = 0.05 * torch.exp(-0.01 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2)
+    qvel_regulation = rew_weights["QVelRegulationReward"] * torch.exp(-0.01 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2)
     #penalize contact force & difference
     
     #1. Method (by sensor -> doesnt works well)
@@ -871,16 +895,16 @@ def compute_humanoid_walk_reward(
 
     policy_freq_scale = 1
     # contact_force_penalty = 0.1 * torch.exp(-0.0005*(torch.norm(lfoot_force[:], dim=1) + torch.norm(rfoot_force[:], dim=1)))
-    contact_force_diff_regulation = 0.2 * torch.exp(-0.01*policy_freq_scale*(torch.norm(lfoot_force[:]-lfoot_force_pre[:], dim=1) + \
+    contact_force_diff_regulation = rew_weights["ContactForceDiffRegulationReward"] * torch.exp(-0.01*policy_freq_scale*(torch.norm(lfoot_force[:]-lfoot_force_pre[:], dim=1) + \
                                                             torch.norm(rfoot_force[:]-rfoot_force_pre[:], dim=1)))
     #calculate torque input cost
-    torque_regulation = 0.05 * torch.exp(-0.01 * torch.norm((actions[:,0:-1])*333,dim=1))
+    torque_regulation = rew_weights["TorqueRegulationReward"] * torch.exp(-0.01 * torch.norm((actions[:,0:-1])*333,dim=1))
     #penalize difference of torque values
-    torque_diff_regulation = 0.6 * torch.exp(-0.01*policy_freq_scale * torch.norm((actions[:,0:-1]-actions_pre[:,0:-1])*333, dim=1))
+    torque_diff_regulation = rew_weights["TorqueDiffRegulationReward"] * torch.exp(-0.01*policy_freq_scale * torch.norm((actions[:,0:-1]-actions_pre[:,0:-1])*333, dim=1))
     #penalize difference of dof_velocities
-    qacc_regulation = 0.05 * torch.exp(-20.0*torch.norm((joint_velocity_states[:,0:]-pre_joint_velocity_states[:,0:]), dim=1)**2)
+    qacc_regulation = rew_weights["QAccRegulationReward"] * torch.exp(-20.0*torch.norm((joint_velocity_states[:,0:]-pre_joint_velocity_states[:,0:]), dim=1)**2)
     #track body velocity difference between target & state
-    body_vel_reward = 0.3 * torch.exp(-3.0 * torch.norm((target_vel[:,0:] - root_pose_states[:,7:9]), dim=1)**2)
+    body_vel_reward = rew_weights["BodyVelocityReward"] * torch.exp(-3.0 * torch.norm((target_vel[:,0:] - root_pose_states[:,7:9]), dim=1)**2)
     #compare & track if foot contact phase synchronizes with refrence motion
     left_foot_contact = (lfoot_force[:,2].unsqueeze(-1) > 1.)
     right_foot_contact = (rfoot_force[:,2].unsqueeze(-1) > 1.)
@@ -899,7 +923,7 @@ def compute_humanoid_walk_reward(
     RSSP_sync = RSSP & right_foot_contact & ~left_foot_contact
     LSSP_sync = LSSP & ~right_foot_contact & left_foot_contact
     foot_contact_reward = torch.zeros_like(mimic_body_orientation_reward, dtype=torch.float)
-    foot_contact_feeder = 0.2*torch.ones_like(foot_contact_reward, dtype=torch.float)
+    foot_contact_feeder = rew_weights["FootContactReward"] * torch.ones_like(foot_contact_reward, dtype=torch.float)
     foot_contact_reward = torch.where(DSP_sync.squeeze(-1), foot_contact_feeder, foot_contact_reward)
     foot_contact_reward = torch.where(RSSP_sync.squeeze(-1), foot_contact_feeder, foot_contact_reward)
     foot_contact_reward = torch.where(LSSP_sync.squeeze(-1), foot_contact_feeder, foot_contact_reward)
@@ -911,11 +935,11 @@ def compute_humanoid_walk_reward(
     left_foot_thres = lfoot_force[:,2].unsqueeze(-1) > 1.4*9.81*total_mass
     right_foot_thres = rfoot_force[:,2].unsqueeze(-1) > 1.4*9.81*total_mass
     thres = left_foot_thres | right_foot_thres
-    force_thres_penalty = torch.where(thres.squeeze(-1), -0.2*ones[:], zeros[:])
+    force_thres_penalty = torch.where(thres.squeeze(-1), rew_weights["ForceThresholdPenalty"] * ones[:], zeros[:])
 
-    contact_force_penalty_thres = 0.1*(1-torch.exp(-0.007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
-                                                            + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1))))
-    contact_force_penalty = torch.where(thres.squeeze(-1), contact_force_penalty_thres[:], 0.1*ones[:])
+    contact_force_penalty_thres = rew_weights["ContactForceThresholdPenalty"] * torch.exp(-0.007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
+                                                            + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1)))
+    # contact_force_penalty = torch.where(thres.squeeze(-1), contact_force_penalty_thres[:], 0.1*ones[:])
         
     left_foot_thres_diff = torch.abs(lfoot_force[:,2]-lfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass/policy_freq_scale
     right_foot_thres_diff = torch.abs(rfoot_force[:,2]-rfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass/policy_freq_scale
@@ -931,8 +955,8 @@ def compute_humanoid_walk_reward(
     # contact_force_diff_regulation *= 0
     # contact_force_penalty *= 0
     weight_scale = total_mass / 104.48
-    force_ref_reward = 0.1*torch.exp(-0.001*(torch.abs(lfoot_force[:,2]+weight_scale.squeeze(-1)*force_target[:,0]))) +\
-                        0.1*torch.exp(-0.001*(torch.abs(rfoot_force[:,2]+weight_scale.squeeze(-1)*force_target[:,1])))
+    force_ref_reward = rew_weights["ForceRefReward"] * (torch.exp(-0.001*(torch.abs(lfoot_force[:,2]+weight_scale.squeeze(-1)*force_target[:,0]))) +\
+                        torch.exp(-0.001*(torch.abs(rfoot_force[:,2]+weight_scale.squeeze(-1)*force_target[:,1]))))
 
 
     names = ["mimic_body_orientation_reward", "qpos_regulation", "qvel_regulation",\
@@ -941,11 +965,11 @@ def compute_humanoid_walk_reward(
                 "double_support_force_diff_regulation","force_thres_penalty","force_diff_thres_penalty", "force_ref_reward"]
     
     reward = torch.stack([mimic_body_orientation_reward, qpos_regulation,qvel_regulation,\
-        contact_force_penalty, torque_regulation, torque_diff_regulation, body_vel_reward,\
+        contact_force_penalty_thres, torque_regulation, torque_diff_regulation, body_vel_reward,\
            qacc_regulation, foot_contact_reward, contact_force_diff_regulation,\
             double_support_force_diff_regulation, force_thres_penalty, force_diff_thres_penalty, force_ref_reward],1)
 
-    total_reward = mimic_body_orientation_reward + qpos_regulation + qvel_regulation + contact_force_penalty + \
+    total_reward = mimic_body_orientation_reward + qpos_regulation + qvel_regulation + contact_force_penalty_thres + \
         torque_regulation + torque_diff_regulation + body_vel_reward + qacc_regulation + foot_contact_reward + \
         contact_force_diff_regulation + double_support_force_diff_regulation + force_thres_penalty + force_diff_thres_penalty + force_ref_reward
 
