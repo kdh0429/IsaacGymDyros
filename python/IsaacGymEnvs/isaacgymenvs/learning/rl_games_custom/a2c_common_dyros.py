@@ -1117,6 +1117,10 @@ class ContinuousA2CBase(A2CBase):
                 wandb.save(os.path.join(os.getcwd(), 'cfg/task/DyrosDynamicWalk.yaml'), policy="now")
                 wandb.save(os.path.join(os.getcwd(), 'cfg/train/DyrosDynamicWalkPPO.yaml'), policy="now")
                 wandb.save(os.path.join(os.getcwd(), 'tasks/dyros_dynamic_walk.py'), policy="now")
+            if(self.config['name']=='TocabiFootHeight'):
+                wandb.save(os.path.join(os.getcwd(), 'cfg/task/TocabiFootHeight.yaml'), policy="now")
+                wandb.save(os.path.join(os.getcwd(), 'cfg/train/TocabiFootHeightPPO.yaml'), policy="now")
+                wandb.save(os.path.join(os.getcwd(), 'tasks/tocabi_foot_height.py'), policy="now")
             wandb.save(os.path.join(os.getcwd(), '../assets/mjcf/dyros_tocabi/xml/dyros_tocabi.xml'), policy="now")
             wandb.save(os.path.join(os.getcwd(), 'tasks/base/vec_task.py'), policy="now")
             self.init_wandb = True
