@@ -1099,7 +1099,7 @@ class ContinuousA2CBase(A2CBase):
         reward_names
     ):
         if self.init_wandb is False:
-            os.environ['WANDB_API_KEY'] = 'fead28f24e69ced10a436c3ea4cb26c074ae0dad'
+            os.environ['WANDB_API_KEY'] = None
             wandb.init(project=self.config['name'], tensorboard = False)
             if(self.config['name']=='DyrosTocabiWalk'):
                 wandb.save(os.path.join(os.getcwd(), 'cfg/task/DyrosTocabiWalk.yaml'), policy="now")
