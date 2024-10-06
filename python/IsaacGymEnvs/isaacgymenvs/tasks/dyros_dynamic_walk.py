@@ -1249,8 +1249,8 @@ def compute_humanoid_walk_reward(
     quat_error = quat_diff_rad(identity_rot, torso_rot) #quat_error = normalize_angle(quat_error)
     mimic_body_orientation_reward = 0.3 * torch.exp(-13.2 * torch.abs(quat_error)) 
     #calculate joint position & velocity & regulate with target
-    # qpos_regulation = 0.35 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2) #NOTE - orig
-    qpos_regulation = 0.8 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2)
+    qpos_regulation = 0.35 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2) #NOTE - orig
+    # qpos_regulation = 0.8 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2)
     
     #calculate difference between initial q_vel, and q_vel now
     qvel_regulation = 0.05 * torch.exp(-0.01 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2) #NOTE - orig
