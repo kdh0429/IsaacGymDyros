@@ -75,12 +75,12 @@ task:
       operation: "additive"
       distribution: "gaussian"
     sim_params: 
-      gravity:
-        range: [0, 0.4]
-        operation: "additive"
-        distribution: "gaussian"
-        schedule: "linear"  # "linear" will linearly interpolate between no rand and max rand
-        schedule_steps: 0
+      # gravity:
+      #   range: [0, 0.4]
+      #   operation: "additive"
+      #   distribution: "gaussian"
+      #   schedule: "linear"  # "linear" will linearly interpolate between no rand and max rand
+      #   schedule_steps: 0
     actor_params:
       humanoid:
         # color: True
@@ -125,12 +125,12 @@ task:
             distribution: "uniform"
             schedule: "constant"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
             schedule_steps: 0
-          stiffness: 
-            range: [0.5, 1.5]
-            operation: "scaling"
-            distribution: "uniform"
-            schedule: "linear"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
-            schedule_steps: 0
+          # stiffness: 
+          #   range: [0.5, 1.5]
+          #   operation: "scaling"
+          #   distribution: "uniform"
+          #   schedule: "linear"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
+          #   schedule_steps: 0
           # lower:
           #   range: [0, 0.01]
           #   operation: "additive"
