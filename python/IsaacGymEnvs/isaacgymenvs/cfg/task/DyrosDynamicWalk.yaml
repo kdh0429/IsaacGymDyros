@@ -74,7 +74,7 @@ task:
       range: [0., .02]
       operation: "additive"
       distribution: "gaussian"
-    sim_params: 
+    # sim_params: 
       # gravity:
       #   range: [0, 0.4]
       #   operation: "additive"
