@@ -8,8 +8,8 @@ env:
   envSpacing: 5
   episodeLength: 32 # seconds
   enableDebugVis: False
-  # controlFrequencyInv: 2 #rui - [16 = 31.25Hz, 8 = 62.5Hz, 4 = 125Hz, 2 = 250Hz, 1 = 500Hz ]
-  controlFrequencyInv: 2 #rui - [32 = 31.25Hz, 16 = 62.5Hz, 8 = 125Hz, 4 = 250Hz, 2 = 500Hz ]
+  controlFrequencyInv: 1 #rui - [16 = 31.25Hz, 8 = 62.5Hz, 4 = 125Hz, 2 = 250Hz, 1 = 500Hz ]
+  # controlFrequencyInv: 2 #rui - [32 = 31.25Hz, 16 = 62.5Hz, 8 = 125Hz, 4 = 250Hz, 2 = 500Hz ]
   # controlFrequencyInv: 8 #rui - [64 = 31.25Hz, 32 = 62.5Hz, 16 = 125Hz, 8 = 250Hz, 4 = 500Hz ]
   
   clipActions: 1.0
@@ -41,7 +41,8 @@ env:
   enableCameraSensors: False
 
 sim:
-  dt: 0.001 #[1000Hz] #0.0005 #0.004 # 0.0005 #1/2000 
+  # dt: 0.001 #[1000Hz] #0.0005 #0.004 # 0.0005 #1/2000 
+  dt: 0.002 #[500Hz] #1/500
   substeps: 1
   up_axis: "z"
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
@@ -66,21 +67,21 @@ task:
   randomization_params:
     # specify which attributes to randomize for each actor type and property
     frequency: 1   # Define how many environment steps between generating new randomizations
-    observations:
-      range: [0, .005] # range for the white noise
-      operation: "additive"
-      distribution: "gaussian"
-    actions:
-      range: [0., .02]
-      operation: "additive"
-      distribution: "gaussian"
+    # observations:
+    #   range: [0, .005] # range for the white noise
+    #   operation: "additive"
+    #   distribution: "gaussian"
+    # actions:
+    #   range: [0., .02]
+    #   operation: "additive"
+    #   distribution: "gaussian"
     # sim_params: 
-      # gravity:
-      #   range: [0, 0.4]
-      #   operation: "additive"
-      #   distribution: "gaussian"
-      #   schedule: "linear"  # "linear" will linearly interpolate between no rand and max rand
-      #   schedule_steps: 0
+    #   gravity:
+    #     range: [0, 0.4]
+    #     operation: "additive"
+    #     distribution: "gaussian"
+    #     schedule: "linear"  # "linear" will linearly interpolate between no rand and max rand
+    #     schedule_steps: 0
     actor_params:
       humanoid:
         # color: True
@@ -92,20 +93,20 @@ task:
             setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
             schedule: "constant"  # "linear" will linearly interpolate between no rand and max rand
             schedule_steps: 0
-        rigid_shape_properties:
-          friction:
-            num_buckets: 500
-            range: [0.7, 1.3]
-            operation: "scaling"
-            distribution: "uniform"
-            schedule: "constant"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
-            schedule_steps: 0
-          restitution:
-            range: [0., 0.7]
-            operation: "scaling"
-            distribution: "uniform"
-            schedule: "constant"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
-            schedule_steps: 0
+        # rigid_shape_properties:
+        #   friction:
+        #     num_buckets: 500
+        #     range: [0.7, 1.3]
+        #     operation: "scaling"
+        #     distribution: "uniform"
+        #     schedule: "constant"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
+        #     schedule_steps: 0
+        #   restitution:
+        #     range: [0., 0.7]
+        #     operation: "scaling"
+        #     distribution: "uniform"
+        #     schedule: "constant"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
+        #     schedule_steps: 0
         dof_properties:
           damping: 
             range: [0.0, 2.9]
@@ -119,12 +120,12 @@ task:
             distribution: "uniform"
             schedule: "constant"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
             schedule_steps: 0
-          friction: 
-            range: [0.6, 1.4]
-            operation: "scaling"
-            distribution: "uniform"
-            schedule: "constant"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
-            schedule_steps: 0
+          # friction: 
+          #   range: [0.6, 1.4]
+          #   operation: "scaling"
+          #   distribution: "uniform"
+          #   schedule: "constant"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
+          #   schedule_steps: 0
           # stiffness: 
           #   range: [0.5, 1.5]
           #   operation: "scaling"

@@ -602,7 +602,8 @@ class DyrosDynamicWalk(VecTask):
             self.gym.refresh_net_contact_force_tensor(self.sim)
             
             # self.qpos_noise = self.dof_pos + torch.clamp(0.00016/3.0*torch.randn_like(self.dof_pos) , min=-0.00016, max=0.00016)
-            self.qpos_noise = self.dof_pos + torch.clamp(torch.normal(torch.zeros_like(self.dof_pos), 0.00016/3.0), min=-0.00016, max=0.00016)
+            # self.qpos_noise = self.dof_pos + torch.clamp(torch.normal(torch.zeros_like(self.dof_pos), 0.00016/3.0), min=-0.00016, max=0.00016) #NOTE - original
+            self.qpos_noise = self.dof_pos + torch.clamp(torch.normal(mean=torch.zeros_like(self.dof_pos), std=0.0005), min=-0.0005, max=0.0005)
             self.qvel_noise = (self.qpos_noise - self.qpos_pre) / self.dt
             self.qpos_pre = self.qpos_noise.clone()
             
@@ -1250,7 +1251,6 @@ def compute_humanoid_walk_reward(
     mimic_body_orientation_reward = 0.3 * torch.exp(-13.2 * torch.abs(quat_error)) 
     #calculate joint position & velocity & regulate with target
     qpos_regulation = 0.35 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2) #NOTE - orig
-    # qpos_regulation = 0.8 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2)
     
     #calculate difference between initial q_vel, and q_vel now
     qvel_regulation = 0.05 * torch.exp(-0.01 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2) #NOTE - orig
