@@ -72,8 +72,8 @@ params:
     lr_schedule: linear # could be adaptive, linear, constant # DH: should be linear
     kl_threshold: 0.008
     score_to_win: 100000 #! orig 20000
-    # max_epochs: ${resolve_default:5000,${....max_iterations}}   # DH: u may play with this # GENE: 80000000 / 16384 * 2
-    max_epochs: 10000
+    max_epochs: ${resolve_default:5000,${....max_iterations}}   # DH: u may play with this # GENE: 80000000 / 16384 * 2
+    # max_epochs: 10000
     save_best_after: 200
     save_frequency: 100
     print_stats: True

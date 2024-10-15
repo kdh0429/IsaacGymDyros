@@ -85,6 +85,7 @@ task:
     actor_params:
       humanoid:
         # color: True
+
         rigid_body_properties:
           mass: 
             range: [0.8, 1.2]
@@ -93,6 +94,7 @@ task:
             setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
             schedule: "constant"  # "linear" will linearly interpolate between no rand and max rand
             schedule_steps: 0
+
         # rigid_shape_properties:
         #   friction:
         #     num_buckets: 500
