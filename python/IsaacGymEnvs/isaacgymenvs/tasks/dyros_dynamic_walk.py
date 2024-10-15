@@ -550,21 +550,19 @@ class DyrosDynamicWalk(VecTask):
             # self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
             #                                             device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
             
-            self.delay_idx_tensor[:, 1] = torch.randint(low=1 + int(0.002 / self.dt),
-                                                        high=1 + round(0.03 / self.dt),
-                                                        size=(self.delay_idx_tensor.shape[0], 1),
-                                                        device=self.device,
-                                                        requires_grad=False).squeeze(-1)
+            # self.delay_idx_tensor[:, 1] = torch.randint(low=1 + int(0.002 / self.dt),
+            #                                             high=1 + round(0.03 / self.dt),
+            #                                             size=(self.delay_idx_tensor.shape[0], 1),
+            #                                             device=self.device,
+            #                                             requires_grad=False).squeeze(-1)
 
-            self.obs_delay_idx_tensor[:, 1] = torch.randint(low=1 + int(0.002 / self.dt),
-                                                            high=1 + round(0.03 / self.dt),
-                                                            size=(self.obs_delay_idx_tensor.shape[0], 1),
-                                                            device=self.device,
-                                                            requires_grad=False).squeeze(-1)
+            # self.obs_delay_idx_tensor[:, 1] = torch.randint(low=1 + int(0.002 / self.dt),
+            #                                                 high=1 + round(0.03 / self.dt),
+            #                                                 size=(self.obs_delay_idx_tensor.shape[0], 1),
+            #                                                 device=self.device,
+            #                                                 requires_grad=False).squeeze(-1)
             
             
-            self.delay_idx_tensor[:, 1] = torch.ones_like(self.delay_idx_tensor[:, 1]) 
-            self.obs_delay_idx_tensor[:, 1] = torch.ones_like(self.obs_delay_idx_tensor[:, 1]) 
             #? delay checker simtick ---------------------------------------------------------tested
             
             
@@ -671,7 +669,7 @@ class DyrosDynamicWalk(VecTask):
             # print("normed_obs_3D: ", normed_obs_3D)
             # print("normed_obs_3D.shape: ", normed_obs_3D.shape)
             self.obs_history_2000_3D = torch.cat((self.obs_history_2000_3D[:, 1:, :], normed_obs_3D), dim=1) #rui Concatenate along the second dimension (num_envs, 40, 37)
-            # print("self.obs_history_2000_3D: ",self.obs_history_2000_3D)
+            # print("self.obs_history_2000_3D: ",self.obs_history_2000_3D[0, :, :])
             # print("self.obs_history_2000_3D.shape: ", self.obs_history_2000_3D.shape)
             
             epi_start_idx = (self.epi_len == 0) #rui - assign boolean tensor to epi_start_idx 
@@ -732,8 +730,9 @@ class DyrosDynamicWalk(VecTask):
                                 self.obs_history_2000_3D[self.simul_len_tensor[:,0], torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device) - self.simul_len_tensor[:,1], :]) #? size num_envs, 37 
             #? obs obs delay 
             
-            # print("self.obs_delay_idx_tensor[:, 0]: ", self.obs_delay_idx_tensor[:, 0]) 
-            # print("self.obs_delay_idx_tensor[:, 1]: ", self.obs_delay_idx_tensor[:, 1])
+            # print("self.obs_delay_idx_tensor[0, :]: ", self.obs_delay_idx_tensor[0, :]) 
+            # print("self.obs_delay_idx_tensor[0, 1]: ", self.obs_delay_idx_tensor[0, 1])
+            # print("self.obs_buf: ", self.obs_buf[0, :])
             # print("i : ", i)
             # print("torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device) : ", torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device))
             # print("torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device) - self.obs_delay_idx_tensor[:,1] : ", torch.full((self.num_envs,), (self.num_obs_skip*self.skipframe*(i+1))-1, device=self.device) - self.obs_delay_idx_tensor[:,1])
@@ -1048,10 +1047,10 @@ class DyrosDynamicWalk(VecTask):
         self.reset_buf[env_ids] = 1
 
         self.action_log[env_ids] = torch.zeros(1+round(0.03/self.dt),12,device=self.device,dtype=torch.float,requires_grad=False)
-        # self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
-        #                                                 device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
-        # self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
-        #                                                 device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
+        self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
+                                                        device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
+        self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
+                                                        device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
         self.contact_reward_mean[env_ids] = self.contact_reward_sum[env_ids] /  self.epi_len[env_ids]
         self.contact_reward_sum[env_ids] = 0
         #low 5, high 12 for 2000 / 250Hz
