@@ -493,11 +493,11 @@ class DyrosDynamicWalk(VecTask):
         positive_mask = self.actions[:,-1]>0
         self.actions[:,-1] = positive_mask * self.actions[:,-1] 
         self.action_history = torch.cat((self.action_history[:,self.num_actions:], self.actions),dim=-1)
-        self.action_history_2000 = torch.cat((self.action_history_2000[:,self.num_actions:], self.actions), dim=-1)
         self.action_3D = self.actions.unsqueeze(1)  # Reshape to (num_envs, 1, 13)
-        self.action_history_2000_3D = torch.cat((self.action_history_2000_3D[:, 1:, :], self.action_3D), dim=1)
+        # self.action_history_2000 = torch.cat((self.action_history_2000[:,self.num_actions:], self.actions), dim=-1)
+        # self.action_history_2000_3D = torch.cat((self.action_history_2000_3D[:, 1:, :], self.action_3D), dim=1)
         
-        self.action_torque = self.actions[:,0:-1] * self.motor_constant_scale[:,0:]*self.action_high[:12]
+        # self.action_torque = self.actions[:,0:-1] * self.motor_constant_scale[:,0:]*self.action_high[:12]
         
 
         # new_vel_idx = torch.nonzero((self.epi_len[:] % (self.max_episode_length/4)) == (self.max_episode_length/4-1))
@@ -545,6 +545,9 @@ class DyrosDynamicWalk(VecTask):
         #!SECTION - reset diff tensor list ends here
         
         for _ in range(self.skipframe): #rui - main simulation loop
+            self.action_history_2000 = torch.cat((self.action_history_2000[:,self.num_actions:], self.actions), dim=-1)
+            self.action_history_2000_3D = torch.cat((self.action_history_2000_3D[:, 1:, :], self.action_3D), dim=1)
+            self.action_torque = self.actions[:,0:-1] * self.motor_constant_scale[:,0:]*self.action_high[:12]
             # self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
             #                                             device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
             # self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
