@@ -149,11 +149,16 @@ class TocabiFootHeight(VecTask):
         self.qvel_noise = torch.zeros_like(self.dof_vel)
         self.qpos_pre = torch.zeros_like(self.dof_pos)
         #for random target velocity
-        vel_mag = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.8
-        vel_theta = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
-        x_vel_target = vel_mag[:] * torch.cos(vel_theta[:])
+        vel_mag = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False) * 0.3
+        vel_theta = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)* 2 * 3.14159265358979
+        x_vel_target = vel_mag[:] * torch.cos(vel_theta[:]) + 0.1
         y_vel_target = vel_mag[:] * torch.sin(vel_theta[:])
         self.target_vel =  torch.cat([x_vel_target,y_vel_target],dim=1)
+        # print(f"(init)vel_mag: {vel_mag[0]}")
+        # print(f"(init)vel_theta: {vel_theta[0]}")
+        # print(f"(init)x_vel_target: {x_vel_target[0]}")
+        # print(f"(init)y_vel_target: {y_vel_target[0]}")
+        # print(f"(init)target_vel: {self.target_vel[0]}")
 
         
         #make motor scale constant
@@ -220,10 +225,22 @@ class TocabiFootHeight(VecTask):
         self.init_done = True
 
     def data_logging(self):
-        self.lfoot_force = self.contact_forces[0,self.left_foot_idx,0:3]
-        self.rfoot_force = self.contact_forces[0,self.right_foot_idx,0:3]
-        self.writeFile.write(f"{self.lfoot_force[0]:.8f}\t{self.lfoot_force[1]:.8f}\t{self.lfoot_force[2]:.8f}\t")
-        self.writeFile.write(f"{self.rfoot_force[0]:.8f}\t{self.rfoot_force[1]:.8f}\t{self.rfoot_force[2]:.8f}\t")
+        _rfoot_force = self.contact_forces[0,self.right_foot_idx,0:3]
+        _lfoot_force = self.contact_forces[0,self.left_foot_idx,0:3]
+        # _rfoot_pos = self.body_states[0, self.right_foot_idx, 0:3]
+        # _lfoot_pos = self.body_states[0, self.left_foot_idx, 0:3]
+        self.writeFile.write(f"{_rfoot_force[0]:.8f}\t{_rfoot_force[1]:.8f}\t{_rfoot_force[2]:.8f}\t")
+        self.writeFile.write(f"{_lfoot_force[0]:.8f}\t{_lfoot_force[1]:.8f}\t{_lfoot_force[2]:.8f}\t")
+        # self.writeFile.write(f"{_rfoot_pos[0]:.8f}\t{_rfoot_pos[1]:.8f}\t{_rfoot_pos[2]:.8f}\t")
+        # self.writeFile.write(f"{_lfoot_pos[0]:.8f}\t{_lfoot_pos[1]:.8f}\t{_lfoot_pos[2]:.8f}\t")
+        # print("torch.sin((mocap_data_idx-300)/1200*pi)*0.055 :", torch.sin((mocap_data_idx[0]-300)/1200*3.14)*0.055)
+        # if self.mocap_data_idx[0] >= 300 and self.mocap_data_idx[0] < 1500:
+        #     footswing = torch.sin((self.mocap_data_idx[0]-300)/1200*3.14)*0.25 + 0.1585
+        # elif self.mocap_data_idx[0] >= 2100 and self.mocap_data_idx[0] < 3300:
+        #     footswing = torch.sin((self.mocap_data_idx[0]-2100)/1200*3.14)*0.25 + 0.1585
+        # else:
+        #     footswing = torch.tensor([0.1585], device=self.device)
+        # self.writeFile.write(f"{footswing[0]:.8f}\t")
         self.writeFile.write(f"\n")
 
        
@@ -443,6 +460,8 @@ class TocabiFootHeight(VecTask):
             self.contact_reward_sum,
             self.right_foot_idx,
             self.left_foot_idx
+            # self.rfoot_pos,
+            # self.lfoot_pos
         )
         reward = torch.cat([reward, self.perturb_start], 1)
 
@@ -586,6 +605,9 @@ class TocabiFootHeight(VecTask):
         self.gym.refresh_net_contact_force_tensor(self.sim)
         # self.gym.refresh_rigid_body_state_tensor(self.sim)
 
+        # self.rfoot_pos = self.body_states[:, self.right_foot_idx, 0:3]
+        # self.lfoot_pos = self.body_states[:, self.left_foot_idx, 0:3]
+
         # self.data_logging()
 
         self.check_termination()
@@ -660,11 +682,18 @@ class TocabiFootHeight(VecTask):
         self._reset_dof_states(env_ids)
 
         # reset target_vel & initial mocap_data (starting foot)
-        vel_mag = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False) * 0.8
-        vel_theta = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
-        x_vel_target = vel_mag[:] * torch.cos(vel_theta[:])
+        vel_mag = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False) * 0.3
+        vel_theta = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False) * 2 * 3.14159265358979
+        x_vel_target = vel_mag[:] * torch.cos(vel_theta[:]) + 0.1
         y_vel_target = vel_mag[:] * torch.sin(vel_theta[:])
         self.target_vel[env_ids] =  torch.cat([x_vel_target,y_vel_target],dim=1)
+        # print(f"(reset)vel_mag: {vel_mag[0]}")
+        # print(f"(reset)vel_theta: {vel_theta[0]}")
+        # print(f"(reset)x_vel_target: {x_vel_target[0]}")
+        # print(f"(reset)y_vel_target: {y_vel_target[0]}")
+        # print(f"(reset)target_vel: {self.target_vel[:]}")
+
+
         
         rand = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float)
         mask = rand > 0.5
@@ -864,6 +893,8 @@ def compute_humanoid_walk_reward(
     contact_reward_sum,
     right_foot_idx,
     left_foot_idx
+    # right_foot_pos,
+    # left_foot_pos
 ):
     # type: (Dict[str, float], Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, List[int], Tensor, Tensor, Tensor, float, float, float, Tensor, Tensor, int, int) -> Tuple[Tensor, Tensor, List[str], Tensor]
     
@@ -937,14 +968,15 @@ def compute_humanoid_walk_reward(
     thres = left_foot_thres | right_foot_thres
     force_thres_penalty = torch.where(thres.squeeze(-1), rew_weights["ForceThresholdPenalty"] * ones[:], zeros[:])
 
-    contact_force_penalty_thres = rew_weights["ContactForceThresholdPenalty"] * torch.exp(-0.007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
-                                                            + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1)))
-    # contact_force_penalty = torch.where(thres.squeeze(-1), contact_force_penalty_thres[:], 0.1*ones[:])
+    contact_force_penalty_thres = rew_weights["ContactForceThresholdPenalty"] * (1-torch.exp(-0.0007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
+                                                            + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1))))
+    contact_force_penalty = torch.where(thres.squeeze(-1), contact_force_penalty_thres[:], zeros[:])
         
     left_foot_thres_diff = torch.abs(lfoot_force[:,2]-lfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass/policy_freq_scale
     right_foot_thres_diff = torch.abs(rfoot_force[:,2]-rfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass/policy_freq_scale
     thres_diff = left_foot_thres_diff | right_foot_thres_diff
-    force_diff_thres_penalty = torch.where(thres_diff.squeeze(-1), -0.05*ones[:], zeros[:])    
+    force_diff_thres_penalty = torch.where(thres_diff.squeeze(-1), rew_weights["ForceDiffThresholdPenalty"]*ones[:], zeros[:])
+
 
     #Ignoring regulation terms
     # qacc_regulation *= 0
@@ -965,7 +997,7 @@ def compute_humanoid_walk_reward(
                 "double_support_force_diff_regulation","force_thres_penalty","force_diff_thres_penalty", "force_ref_reward"]
     
     reward = torch.stack([mimic_body_orientation_reward, qpos_regulation,qvel_regulation,\
-        contact_force_penalty_thres, torque_regulation, torque_diff_regulation, body_vel_reward,\
+        contact_force_penalty, torque_regulation, torque_diff_regulation, body_vel_reward,\
            qacc_regulation, foot_contact_reward, contact_force_diff_regulation,\
             double_support_force_diff_regulation, force_thres_penalty, force_diff_thres_penalty, force_ref_reward],1)
 
