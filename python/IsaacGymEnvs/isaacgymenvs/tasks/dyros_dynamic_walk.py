@@ -199,10 +199,10 @@ class DyrosDynamicWalk(VecTask):
         self.contact_forces_pre_rewdiff = self.contact_forces.clone()
         
         self.obs_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device) #rui - (num_envs, 10 * 2 * 37)
-        self.obs_history_2000 = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe*self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device) # rui - obs_history_len * frameskip
+        # self.obs_history_2000 = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe*self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device) # rui - obs_history_len * frameskip
         self.obs_history_2000_3D = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe, self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device) # rui - obs_history_len * frameskip
         self.action_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - (num_envs, 10 * 2 * 13)
-        self.action_history_2000 = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe*self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - action_history_len * frameskip
+        # self.action_history_2000 = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe*self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - action_history_len * frameskip
         self.action_history_2000_3D = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe, self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - action_history_len * frameskip
 
         self.init_done = True
@@ -545,7 +545,7 @@ class DyrosDynamicWalk(VecTask):
         #!SECTION - reset diff tensor list ends here
         
         for _ in range(self.skipframe): #rui - main simulation loop
-            self.action_history_2000 = torch.cat((self.action_history_2000[:,self.num_actions:], self.actions), dim=-1)
+            # self.action_history_2000 = torch.cat((self.action_history_2000[:,self.num_actions:], self.actions), dim=-1)
             self.action_history_2000_3D = torch.cat((self.action_history_2000_3D[:, 1:, :], self.action_3D), dim=1)
             self.action_torque = self.actions[:,0:-1] * self.motor_constant_scale[:,0:]*self.action_high[:12]
             # self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
@@ -840,7 +840,7 @@ class DyrosDynamicWalk(VecTask):
             # print(self.contact_forces_pre_rewdiff[0,self.right_foot_idx,0:3])
             
             
-            torque_diff_regulation_rewdiff = 0.8 * torch.exp(-0.1*torch.norm((actions[:,0:-1]-self.actions_pre_rewdiff[:,0:-1])*333 , dim=1))
+            torque_diff_regulation_rewdiff = 0.8 * torch.exp(-0.01*torch.norm((actions[:,0:-1]-self.actions_pre_rewdiff[:,0:-1])*333 , dim=1))
             contact_force_diff_regulation_rewdiff = 0.2 * torch.exp(-0.01*(torch.norm((lfoot_force_rewdiff[:]-lfoot_force_pre_rewdiff[:]), dim=1) + \
                                                             torch.norm((rfoot_force_rewdiff[:]-rfoot_force_pre_rewdiff[:]), dim=1)))
             
