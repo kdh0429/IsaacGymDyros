@@ -35,8 +35,7 @@ class DyrosDynamicWalk(VecTask):
         self.max_episode_length_s = self.cfg["env"]["episodeLength"]
         # self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * self.cfg["env"].get("controlFrequencyInv", 8)) #? 32/(0.001 x 4) = 8000
         # self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * 4) #? 32/(0.001 x 4) = 8000 1000Hz sim
-        self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * 2) #? 32/(0.002 x 2) = 8000 500Hz sim
-                
+        self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * self.cfg["env"].get("controlFrequencyInv", 8))
         self.num_obs_his = self.cfg["env"]["NumHis"]
         self.num_obs_skip = self.cfg["env"]["NumSkip"]
         self.initial_height = self.cfg["env"]["initialHieght"]
@@ -199,9 +198,9 @@ class DyrosDynamicWalk(VecTask):
         self.contact_forces_pre_rewdiff = self.contact_forces.clone()
         
         self.obs_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device) #rui - (num_envs, 10 * 2 * 37)
+        self.action_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - (num_envs, 10 * 2 * 13)
         # self.obs_history_2000 = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe*self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device) # rui - obs_history_len * frameskip
         self.obs_history_2000_3D = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe, self.num_single_step_obs, dtype=torch.float, requires_grad=False, device=self.device) # rui - obs_history_len * frameskip
-        self.action_history = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - (num_envs, 10 * 2 * 13)
         # self.action_history_2000 = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe*self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - action_history_len * frameskip
         self.action_history_2000_3D = torch.zeros(self.num_envs, self.num_obs_his*self.num_obs_skip*self.skipframe, self.num_action, dtype=torch.float, requires_grad=False, device=self.device) #rui - action_history_len * frameskip
 
@@ -576,6 +575,7 @@ class DyrosDynamicWalk(VecTask):
             
             #action_log -> tensor(num_envs, time(current~past 9), dofs(33))
             self.action_log[:,0:-1,:] = self.action_log[:,1:,:].clone() #[self.num_envs, round(0.01/self.dt)+1, 12] #rui - 3D tensor moves the values from index 1 to round(0.01/self.dt)+1 -1 to indices 0 to round(0.01/self.dt)+1 -2
+            # self.action_log[:,0:-1,:] = self.action_log[:,1:,:] 
             self.action_log[:,-1,:] = self.action_torque
             self.simul_len_tensor[:,1] +=1
             self.simul_len_tensor[:,1] = self.simul_len_tensor[:,1].clamp(max=round(0.03/self.dt)+1, min=0) #rui - clamps 2nd col between between 0 and round(0.01/self.dt)+1 1~16
@@ -604,8 +604,8 @@ class DyrosDynamicWalk(VecTask):
             self.gym.refresh_net_contact_force_tensor(self.sim)
             
             # self.qpos_noise = self.dof_pos + torch.clamp(0.00016/3.0*torch.randn_like(self.dof_pos) , min=-0.00016, max=0.00016)
-            # self.qpos_noise = self.dof_pos + torch.clamp(torch.normal(torch.zeros_like(self.dof_pos), 0.00016/3.0), min=-0.00016, max=0.00016) #NOTE - original
-            self.qpos_noise = self.dof_pos + torch.clamp(torch.normal(mean=torch.zeros_like(self.dof_pos), std=0.0005), min=-0.0005, max=0.0005)
+            self.qpos_noise = self.dof_pos + torch.clamp(torch.normal(torch.zeros_like(self.dof_pos), 0.00016/3.0), min=-0.00016, max=0.00016) #NOTE - original
+            # self.qpos_noise = self.dof_pos + torch.clamp(torch.normal(mean=torch.zeros_like(self.dof_pos), std=0.0005), min=-0.0005, max=0.0005)
             self.qvel_noise = (self.qpos_noise - self.qpos_pre) / self.dt
             self.qpos_pre = self.qpos_noise.clone()
             
@@ -840,8 +840,8 @@ class DyrosDynamicWalk(VecTask):
             # print(self.contact_forces_pre_rewdiff[0,self.right_foot_idx,0:3])
             
             
-            torque_diff_regulation_rewdiff = 0.8 * torch.exp(-0.01*torch.norm((actions[:,0:-1]-self.actions_pre_rewdiff[:,0:-1])*333 , dim=1))
-            contact_force_diff_regulation_rewdiff = 0.2 * torch.exp(-0.01*(torch.norm((lfoot_force_rewdiff[:]-lfoot_force_pre_rewdiff[:]), dim=1) + \
+            torque_diff_regulation_rewdiff = 0.6 * torch.exp(-0.03*torch.norm((actions[:,0:-1]-self.actions_pre_rewdiff[:,0:-1])*333 , dim=1))
+            contact_force_diff_regulation_rewdiff = 0.2 * torch.exp(-0.03*(torch.norm((lfoot_force_rewdiff[:]-lfoot_force_pre_rewdiff[:]), dim=1) + \
                                                             torch.norm((rfoot_force_rewdiff[:]-rfoot_force_pre_rewdiff[:]), dim=1)))
             
             left_foot_thres_diff_rewdiff = torch.abs(lfoot_force_rewdiff[:,2]-lfoot_force_pre_rewdiff[:,2]).unsqueeze(-1) > 0.2*9.81*self.total_mass #NOTE - original
@@ -865,8 +865,7 @@ class DyrosDynamicWalk(VecTask):
             force_diff_thres_penalty_rewdiff_list.append(force_diff_thres_penalty_rewdiff)
             
             self.contact_forces_pre_rewdiff = self.contact_forces.clone()
-            self.actions_pre_rewdiff[:,0:-1] = actions[:,0:-1]
-            
+            self.actions_pre_rewdiff[:,0:-1] = self.actions[:,0:-1].clone()
             
             #!SECTION - for diff rew for every sim step ends here
         
@@ -890,7 +889,7 @@ class DyrosDynamicWalk(VecTask):
         #observation values update
         
         #time update
-        # self.time += self.dt_policy
+        self.time += self.dt_policy
         self.time += 5*self.dt_policy*self.actions[:,-1].unsqueeze(-1)
         
     def render(self):
@@ -905,9 +904,9 @@ class DyrosDynamicWalk(VecTask):
         self.progress_buf += 1
         self.randomize_buf += 1
             
-        self.gym.refresh_dof_state_tensor(self.sim)
-        self.gym.refresh_actor_root_state_tensor(self.sim)
-        self.gym.refresh_net_contact_force_tensor(self.sim)
+        # self.gym.refresh_dof_state_tensor(self.sim)
+        # self.gym.refresh_actor_root_state_tensor(self.sim)
+        # self.gym.refresh_net_contact_force_tensor(self.sim)
         # self.gym.refresh_rigid_body_state_tensor(self.sim)
 
         self.check_termination()
@@ -1050,9 +1049,9 @@ class DyrosDynamicWalk(VecTask):
         self.reset_buf[env_ids] = 1
 
         self.action_log[env_ids] = torch.zeros(1+round(0.03/self.dt),12,device=self.device,dtype=torch.float,requires_grad=False)
-        self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
+        self.delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.01 /self.dt),size=(len(env_ids),1),\
                                                         device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
-        self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.03 /self.dt),size=(len(env_ids),1),\
+        self.obs_delay_idx_tensor[env_ids,1] = torch.randint(low=1+int(0.002/self.dt),high=1+round(0.01 /self.dt),size=(len(env_ids),1),\
                                                         device=self.device,requires_grad=False).squeeze(-1) #rui 1~11
         self.contact_reward_mean[env_ids] = self.contact_reward_sum[env_ids] /  self.epi_len[env_ids]
         self.contact_reward_sum[env_ids] = 0
@@ -1202,14 +1201,14 @@ class DyrosDynamicWalk(VecTask):
             self.obs_history[epi_start_idx,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = normed_obs[epi_start_idx,:] #rui - epi_start_idx, num_single_step_obs(i)~num_singel_step_obs(i+1)
 
         #*******************************************************************************for adding delay from here
-        for i in range(0, self.num_obs_his): #rui - num_obs_his 10 
-            self.obs_buf[:,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = \
-                self.obs_history[:,self.num_single_step_obs*(self.num_obs_skip*(i+1)-1):self.num_single_step_obs*(self.num_obs_skip*(i+1))]
+        # for i in range(0, self.num_obs_his): #rui - num_obs_his 10 
+        #     self.obs_buf[:,self.num_single_step_obs*i:self.num_single_step_obs*(i+1)] = \
+        #         self.obs_history[:,self.num_single_step_obs*(self.num_obs_skip*(i+1)-1):self.num_single_step_obs*(self.num_obs_skip*(i+1))]
        
-        action_start_idx = self.num_single_step_obs*self.num_obs_his
-        for i in range(self.num_obs_his-1):
-            self.obs_buf[:,action_start_idx+self.num_actions*i:action_start_idx+self.num_actions*(i+1)] = \
-                self.action_history[:,self.num_actions*(self.num_obs_skip*(i+1)):self.num_actions*(self.num_obs_skip*(i+1)+1)]
+        # action_start_idx = self.num_single_step_obs*self.num_obs_his
+        # for i in range(self.num_obs_his-1):
+        #     self.obs_buf[:,action_start_idx+self.num_actions*i:action_start_idx+self.num_actions*(i+1)] = \
+        #         self.action_history[:,self.num_actions*(self.num_obs_skip*(i+1)):self.num_actions*(self.num_obs_skip*(i+1)+1)]
                         
 #####################################################################
 ###=========================jit functions=========================###
@@ -1293,11 +1292,11 @@ def compute_humanoid_walk_reward(
     #compare & track if foot contact phase synchronizes with refrence motion
     left_foot_contact = (lfoot_force[:,2].unsqueeze(-1) > 1.)
     right_foot_contact = (rfoot_force[:,2].unsqueeze(-1) > 1.)
-    
+  
     
     ones = torch.ones_like(body_vel_reward)
     zeros = torch.zeros_like(body_vel_reward)
-
+    
 
     DSP = (3300 <= mocap_data_idx) & (mocap_data_idx < 3600) 
     DSP = DSP | (mocap_data_idx < 300) 
@@ -1321,9 +1320,10 @@ def compute_humanoid_walk_reward(
     right_foot_thres = rfoot_force[:,2].unsqueeze(-1) > 1.4*9.81*total_mass
     thres = left_foot_thres | right_foot_thres
     force_thres_penalty = torch.where(thres.squeeze(-1), -0.2*ones[:], zeros[:])
-
-    contact_force_penalty_thres = 0.1*(1-torch.exp(-0.007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
-                                                            + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1))))
+    contact_force_penalty_thres = 0.1*torch.exp(-0.007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
+                                                            + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1)))
+    # contact_force_penalty_thres = 0.1*(1-torch.exp(-0.007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
+    #                                                         + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1))))
     contact_force_penalty = torch.where(thres.squeeze(-1), contact_force_penalty_thres[:], 0.1*ones[:]) #NOTE - orig
     
     # left_foot_thres_diff = torch.abs(lfoot_force[:,2]-lfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass/policy_freq_scale
