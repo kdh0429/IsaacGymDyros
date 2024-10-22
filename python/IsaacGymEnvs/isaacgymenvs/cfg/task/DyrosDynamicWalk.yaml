@@ -29,7 +29,7 @@ env:
     cameraOffset: [5.0, 5.0, 2.0]
 
   # cost parameters
-  deathCost: 0.0
+  deathCost: -1.0
   terminationHeight: 0.6
 
   motionfile: 

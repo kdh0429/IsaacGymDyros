@@ -209,7 +209,6 @@ class DyrosDynamicWalk(VecTask):
         #for sim step diff rew
         self.torque_diff_regulation_simtick_rewmean = torch.zeros(self.num_envs, device=self.device, dtype=float)
         self.contact_force_diff_regulation_simtick_rewmean = torch.zeros(self.num_envs, device=self.device, dtype=float)
-        self.force_diff_thres_penalty_simtick_rewmean = torch.zeros(self.num_envs, device=self.device, dtype=float)
         
         #util
         self.ones = torch.ones(self.num_envs, device=self.device)
@@ -435,7 +434,6 @@ class DyrosDynamicWalk(VecTask):
             self.left_foot_idx,
             self.torque_diff_regulation_simtick_rewmean,
             self.contact_force_diff_regulation_simtick_rewmean,
-            self.force_diff_thres_penalty_simtick_rewmean 
             
         )
         reward = torch.cat([reward, self.perturb_start], 1)
@@ -467,7 +465,8 @@ class DyrosDynamicWalk(VecTask):
         self.impulse[ids] = torch.randint(low=50, high=250, size=(len(ids),1),device=self.device, requires_grad=False)
         # self.pert_duration[ids] = torch.randint(low=int(0.1/self.dt_policy), high=int(1/self.dt_policy), size=(len(ids),1),device=self.device, requires_grad=False)#.squeeze(-1) # Unit: episode length
         self.pert_duration[ids] = torch.randint(low=int(25), high=int(250), size=(len(ids),1),device=self.device, requires_grad=False)#.squeeze(-1) # Unit: episode length
-        self.magnitude[ids] = self.impulse[ids] / (self.pert_duration[ids] * self.dt_policy)
+        # self.magnitude[ids] = self.impulse[ids] / (self.pert_duration[ids] * self.dt_policy)
+        self.magnitude[ids] = self.impulse[ids] / (self.pert_duration[ids]* 0.004)
         self.phase[ids] = torch.rand(len(ids),1,device=self.device, dtype=torch.float, requires_grad=False)*2*3.14159265358979
 
     def finish_perturbation(self, ids):
@@ -539,7 +538,6 @@ class DyrosDynamicWalk(VecTask):
         
         torque_diff_regulation_rewdiff_list = []
         contact_force_diff_regulation_rewdiff_list = []
-        force_diff_thres_penalty_rewdiff_list = []
         
         #!SECTION - reset diff tensor list ends here
         
@@ -840,8 +838,8 @@ class DyrosDynamicWalk(VecTask):
             # print(self.contact_forces_pre_rewdiff[0,self.right_foot_idx,0:3])
             
             
-            torque_diff_regulation_rewdiff = 0.6 * torch.exp(-0.03*torch.norm((actions[:,0:-1]-self.actions_pre_rewdiff[:,0:-1])*333 , dim=1))
-            contact_force_diff_regulation_rewdiff = 0.2 * torch.exp(-0.03*(torch.norm((lfoot_force_rewdiff[:]-lfoot_force_pre_rewdiff[:]), dim=1) + \
+            torque_diff_regulation_rewdiff = 0.8 * torch.exp(-0.01*torch.norm((actions[:,0:-1]-self.actions_pre_rewdiff[:,0:-1])*333 , dim=1))
+            contact_force_diff_regulation_rewdiff = 0.2 * torch.exp(-0.01*(torch.norm((lfoot_force_rewdiff[:]-lfoot_force_pre_rewdiff[:]), dim=1) + \
                                                             torch.norm((rfoot_force_rewdiff[:]-rfoot_force_pre_rewdiff[:]), dim=1)))
             
             left_foot_thres_diff_rewdiff = torch.abs(lfoot_force_rewdiff[:,2]-lfoot_force_pre_rewdiff[:,2]).unsqueeze(-1) > 0.2*9.81*self.total_mass #NOTE - original
@@ -857,12 +855,9 @@ class DyrosDynamicWalk(VecTask):
             # print("torch.abs(rfoot_force_rewdiff[0,2]-rfoot_force_pre_rewdiff[0,2]).unsqueeze(-1)")
             # print(torch.abs(rfoot_force_rewdiff[0,2]-rfoot_force_pre_rewdiff[0,2]).unsqueeze(-1))
             
-            # force_diff_thres_penalty_rewdiff = torch.where(thres_diff_rewdiff.squeeze(-1), -0.05*self.ones[:], self.zeros[:])
-            force_diff_thres_penalty_rewdiff = torch.where(thres_diff_rewdiff.squeeze(-1), -0.1*self.ones[:], self.zeros[:])
             
             torque_diff_regulation_rewdiff_list.append(torque_diff_regulation_rewdiff)
             contact_force_diff_regulation_rewdiff_list.append(contact_force_diff_regulation_rewdiff)
-            force_diff_thres_penalty_rewdiff_list.append(force_diff_thres_penalty_rewdiff)
             
             self.contact_forces_pre_rewdiff = self.contact_forces.clone()
             self.actions_pre_rewdiff[:,0:-1] = self.actions[:,0:-1].clone()
@@ -873,11 +868,9 @@ class DyrosDynamicWalk(VecTask):
         
         torque_diff_regulation_rewdiff_list_stack = torch.stack(torque_diff_regulation_rewdiff_list, dim=0) 
         contact_force_diff_regulation_rewdiff_list_stack = torch.stack(contact_force_diff_regulation_rewdiff_list, dim=0) 
-        force_diff_thres_penalty_rewdiff_list_stack = torch.stack(force_diff_thres_penalty_rewdiff_list, dim=0) 
         
         self.torque_diff_regulation_simtick_rewmean = torch.mean(torque_diff_regulation_rewdiff_list_stack, dim=0) 
         self.contact_force_diff_regulation_simtick_rewmean = torch.mean(contact_force_diff_regulation_rewdiff_list_stack, dim=0) 
-        self.force_diff_thres_penalty_simtick_rewmean = torch.mean(force_diff_thres_penalty_rewdiff_list_stack, dim=0) 
         
         #!SECTION - diff rew stack & mean ends
 
@@ -1240,10 +1233,9 @@ def compute_humanoid_walk_reward(
     right_foot_idx,
     left_foot_idx,
     torque_diff_regulation_simtick_rewmean,
-    contact_force_diff_regulation_simtick_rewmean,
-    force_diff_thres_penalty_simtick_rewmean 
+    contact_force_diff_regulation_simtick_rewmean
 ):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, List[int], Tensor, Tensor, Tensor, float, float, float, Tensor, Tensor, int, int, Tensor, Tensor, Tensor) -> Tuple[Tensor, Tensor, List[str], Tensor]
+    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, List[int], Tensor, Tensor, Tensor, float, float, float, Tensor, Tensor, int, int, Tensor, Tensor) -> Tuple[Tensor, Tensor, List[str], Tensor]
     
     #return angle difference between body(root link) quat & target quat (0,0,0,1)
     torso_rot = root_pose_states[:,3:7]
@@ -1256,7 +1248,6 @@ def compute_humanoid_walk_reward(
     
     #calculate difference between initial q_vel, and q_vel now
     qvel_regulation = 0.05 * torch.exp(-0.01 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2) #NOTE - orig
-    # qvel_regulation = 0.05 * torch.exp(-0.01 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2) 
     #penalize contact force & difference
     
     #1. Method (by sensor -> doesnt works well)
@@ -1322,8 +1313,6 @@ def compute_humanoid_walk_reward(
     force_thres_penalty = torch.where(thres.squeeze(-1), -0.2*ones[:], zeros[:])
     contact_force_penalty_thres = 0.1*torch.exp(-0.007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
                                                             + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1)))
-    # contact_force_penalty_thres = 0.1*(1-torch.exp(-0.007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
-    #                                                         + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1))))
     contact_force_penalty = torch.where(thres.squeeze(-1), contact_force_penalty_thres[:], 0.1*ones[:]) #NOTE - orig
     
     # left_foot_thres_diff = torch.abs(lfoot_force[:,2]-lfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass/policy_freq_scale
@@ -1333,7 +1322,7 @@ def compute_humanoid_walk_reward(
     left_foot_thres_diff = torch.abs(lfoot_force[:,2]-lfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass
     right_foot_thres_diff = torch.abs(rfoot_force[:,2]-rfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass
     thres_diff = left_foot_thres_diff | right_foot_thres_diff
-    # force_diff_thres_penalty = torch.where(thres_diff.squeeze(-1), -0.05*ones[:], zeros[:])    
+    force_diff_thres_penalty = torch.where(thres_diff.squeeze(-1), -0.05*ones[:], zeros[:])    
 
     #Ignoring regulation terms
     # qacc_regulation *= 0
@@ -1358,11 +1347,10 @@ def compute_humanoid_walk_reward(
             # "contact_force_diff_regulation",\
             # "double_support_force_diff_regulation",
             "force_thres_penalty",\
-            # "force_diff_thres_penalty",\
+            "force_diff_thres_penalty",\
             "force_ref_reward",\
             "torque_diff_regulation_simtick_rewmean",\
             "contact_force_diff_regulation_simtick_rewmean",\
-            "force_diff_thres_penalty_simtick_rewmean" 
         ]
     
     reward = torch.stack([mimic_body_orientation_reward,\
@@ -1377,7 +1365,9 @@ def compute_humanoid_walk_reward(
             force_ref_reward,\
             torque_diff_regulation_simtick_rewmean,\
             contact_force_diff_regulation_simtick_rewmean,\
-            force_diff_thres_penalty_simtick_rewmean],1)
+
+            force_diff_thres_penalty
+            ],1)
             # torque_diff_regulation,\
             # contact_force_diff_regulation,\
             # double_support_force_diff_regulation, 
@@ -1395,7 +1385,7 @@ def compute_humanoid_walk_reward(
             force_ref_reward +\
             torque_diff_regulation_simtick_rewmean +\
             contact_force_diff_regulation_simtick_rewmean +\
-            force_diff_thres_penalty_simtick_rewmean
+            force_diff_thres_penalty
         # + torque_diff_regulation + contact_force_diff_regulation + force_diff_thres_penalty
         # double_support_force_diff_regulation + force_thres_penalty + force_diff_thres_penalty + force_ref_reward
 

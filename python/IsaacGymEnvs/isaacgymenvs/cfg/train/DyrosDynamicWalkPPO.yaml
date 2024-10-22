@@ -72,9 +72,9 @@ params:
     lr_schedule: linear # could be adaptive, linear, constant # DH: should be linear
     kl_threshold: 0.008
     score_to_win: 100000 #! orig 20000
-    max_epochs: ${resolve_default:5000,${....max_iterations}}   # DH: u may play with this # GENE: 80000000 / 16384 * 2
-    # max_epochs: 10000
-    save_best_after: 200
+    # max_epochs: ${resolve_default:5000,${....max_iterations}}   # DH: u may play with this # GENE: 80000000 / 16384 * 2
+    max_epochs: 10000
+    save_best_after: 4000
     save_frequency: 100
     print_stats: True
     grad_norm: 0.5
@@ -84,7 +84,7 @@ params:
     use_estimator_network: True
     e_clip: 0.2
     horizon_length: 128    # DH: u may play with this
-    minibatch_size: 16384 #4096  # DH: u may play with this (num_envs*horizon_length/mini_batch_size should be minibatch_size!!!!!!!!!!)
+    minibatch_size: 4096 #4096  # DH: u may play with this (num_envs*horizon_length/mini_batch_size should be minibatch_size!!!!!!!!!!)
     mini_epochs: 5
     critic_coef: 0.5
     clip_value: False
