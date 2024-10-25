@@ -60,7 +60,6 @@ class CommonPlayer(players.PpoPlayerContinuous):
         games_played = 0
         has_masks = False
         has_masks_func = getattr(self.env, "has_action_mask", None) is not None
-
         op_agent = getattr(self.env, "create_agent", None)
         if op_agent:
             agent_inited = True

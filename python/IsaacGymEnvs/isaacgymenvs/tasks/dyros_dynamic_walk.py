@@ -34,8 +34,9 @@ class DyrosDynamicWalk(VecTask):
 
         self.max_episode_length_s = self.cfg["env"]["episodeLength"]
         # self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * self.cfg["env"].get("controlFrequencyInv", 8)) #? 32/(0.001 x 4) = 8000
+        self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * 2) #? 32/(0.002 x 2) = 8000 500Hz sim
         # self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * 4) #? 32/(0.001 x 4) = 8000 1000Hz sim
-        self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * self.cfg["env"].get("controlFrequencyInv", 8))
+        # self.max_episode_length = self.max_episode_length_s / (self.cfg["sim"].get("dt") * self.cfg["env"].get("controlFrequencyInv", 8))
         self.num_obs_his = self.cfg["env"]["NumHis"]
         self.num_obs_skip = self.cfg["env"]["NumSkip"]
         self.initial_height = self.cfg["env"]["initialHieght"]
@@ -127,6 +128,8 @@ class DyrosDynamicWalk(VecTask):
         #for random target velocity
         vel_mag = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.8
         vel_theta = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
+        # vel_mag = torch.ones(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.2
+        # vel_theta = torch.ones(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
         
         x_vel_target = vel_mag[:] * torch.cos(vel_theta[:])
         y_vel_target = vel_mag[:] * torch.sin(vel_theta[:])
@@ -216,7 +219,10 @@ class DyrosDynamicWalk(VecTask):
         
         if self.viewer != None:
             self.init_camera()
-       
+            
+        # all_env_ids = torch.arange(self.num_envs, device=self.device)
+        # self.reset_idx(all_env_ids)
+
     def create_sim(self):
         self.up_axis_idx = 2 # index of up axis: Y=1, Z=2
         self.sim = super().create_sim(self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
@@ -521,6 +527,7 @@ class DyrosDynamicWalk(VecTask):
         if (self.perturb and (torch.mean(self.epi_len_log[:]) > self.max_episode_length - 2000) and (torch.mean(self.contact_reward_mean[:]) > 0.165)): #? self.dt_policy = 0.004 [250Hz]
             self.perturb_start[:, 0] = True
         # self.perturb_start[:, 0] = True
+        # print("self.perturb_start : " ,self.perturb_start[0,0])
         if (self.perturb_start[0, 0] == True):
             forces = torch.zeros((self.num_envs, self.num_bodies, 3), device=self.device, dtype=torch.float)
             torques = torch.zeros((self.num_envs, self.num_bodies, 3), device=self.device, dtype=torch.float)
@@ -1016,6 +1023,8 @@ class DyrosDynamicWalk(VecTask):
         # reset target_vel & initial mocap_data (starting foot)
         vel_mag = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*0.8
         vel_theta = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
+        # vel_mag = torch.ones(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*0.2
+        # vel_theta = torch.ones(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
         x_vel_target = vel_mag[:] * torch.cos(vel_theta[:])
         y_vel_target = vel_mag[:] * torch.sin(vel_theta[:])
         self.target_vel[env_ids] =  torch.cat([x_vel_target,y_vel_target],dim=1)
