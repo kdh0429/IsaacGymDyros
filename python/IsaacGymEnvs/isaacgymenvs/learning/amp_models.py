@@ -63,4 +63,12 @@ class ModelAMPContinuous(ModelA2CContinuousLogStd):
                 disc_demo_logit = self.a2c_network.eval_disc(amp_demo_obs)
                 result["disc_demo_logit"] = disc_demo_logit
 
-            return result
+            return result        
+        
+        def update_action_noise(self, progress_remaining):
+            if (progress_remaining > 0.5):
+                progress_remaining_biased = 2*progress_remaining - 1
+            else:
+                progress_remaining_biased = 0.0
+            
+            self.a2c_network.sigma[:] = self.a2c_network.sigma_init * progress_remaining_biased + self.a2c_network.sigma_last * (1-progress_remaining_biased)

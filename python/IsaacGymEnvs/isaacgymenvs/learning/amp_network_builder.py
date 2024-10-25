@@ -45,7 +45,10 @@ class AMPBuilder(network_builder.A2CBuilder):
     class Network(network_builder.A2CBuilder.Network):
         def __init__(self, params, **kwargs):
             super().__init__(params, **kwargs)
-
+            ############### JY edit for linear change sigma ###############
+            self.sigma_init = self.space_config['sigma_init']['val']
+            self.sigma_last = self.space_config['sigma_last']['val']
+            ############### end of JY edit for linear change sigma ###############
             if self.is_continuous:
                 if (not self.space_config['learn_sigma']):
                     actions_num = kwargs.get('actions_num')

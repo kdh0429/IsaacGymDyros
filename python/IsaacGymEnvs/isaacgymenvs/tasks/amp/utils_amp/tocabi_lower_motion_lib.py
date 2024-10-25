@@ -74,7 +74,6 @@ class TocabiLowerMotionLib(MotionLib):
         32 ~ 34 : root vel
         35 ~ 37 : root ang vel
         38 ~ 43 : key pos
-        44 ~ 51 : key rot
         '''
         n = len(motion_ids)
         # num_bodies = self._get_num_bodies()
@@ -147,7 +146,6 @@ class TocabiLowerMotionLib(MotionLib):
         key_pos = (1.0 - blend_expand) * key_pos0 + blend_expand * key_pos1
 
         return root_pos, root_rot, root_vel, root_ang_vel, dof_pos, dof_vel, key_pos
-        # return dof_pos, dof_vel
 
     def _load_motions(self, motion_file):
         '''

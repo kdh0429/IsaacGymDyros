@@ -40,11 +40,10 @@ from .amp.tocabi_amp_lower_base import TocabiAMPLowerBase
 from .amp.utils_amp import gym_util
 from .amp.utils_amp.tocabi_lower_motion_lib import TocabiLowerMotionLib
 
-from isaacgymenvs.utils.torch_jit_utils import to_torch, calc_heading_quat_inv, torch_rand_float, my_quat_rotate
+from isaacgymenvs.utils.torch_jit_utils import to_torch, calc_heading_quat_inv, torch_rand_float, my_quat_rotate, quat_to_tan_norm
 from isaacgym.torch_utils import quat2euler
 
-NUM_AMP_OBS_PER_STEP = 1 + 3 + 12 + 12 + 6 # [root_h, root_rot, dof_pos, dof_vel, key_pos, key_quat]
-# NUM_AMP_OBS_PER_STEP = 13 + 12 + 12 + 6 # [root_h, root_rot, root_vel, root_ang_vel, dof_pos, dof_vel]
+NUM_AMP_OBS_PER_STEP = 1 + 6 + 12 + 12 + 6 # [root_h, root_rot(tan + norm), dof_pos, dof_vel, key_pos, key_quat]
 
 
 class TocabiAMPLower(TocabiAMPLowerBase):
@@ -54,7 +53,6 @@ class TocabiAMPLower(TocabiAMPLowerBase):
         Start = 1
         Random = 2
         Hybrid = 3
-        Custom = 4
 
     def __init__(self, cfg, sim_device, graphics_device_id, headless):
         self.cfg = cfg
@@ -155,21 +153,6 @@ class TocabiAMPLower(TocabiAMPLowerBase):
             self._reset_ref_state_init(env_ids)
         elif (self._state_init == TocabiAMPLower.StateInit.Hybrid):
             self._reset_hybrid_state_init(env_ids)
-        elif (self._state_init == TocabiAMPLower.StateInit.Custom):
-            if self.custom_origins:
-                self.update_terrain_level(env_ids)
-                self._root_states[env_ids] = self._initial_root_states[env_ids]
-                self._root_states[env_ids, :3] += self.env_origins[env_ids]
-                self._root_states[env_ids, 3] += 0.97
-                self._root_states[env_ids, :2] += torch_rand_float(-0.5, 0.5, (len(env_ids), 2), device=self.device)
-                
-                self._dof_pos[env_ids] = self._initial_dof_pos[env_ids]
-                self._dof_vel[env_ids] = self._initial_dof_vel[env_ids]
-            else:
-                self._root_states[env_ids] = self._initial_root_states[env_ids]
-                
-                self._dof_pos[env_ids] = self._initial_dof_pos[env_ids]
-                self._dof_vel[env_ids] = self._initial_dof_vel[env_ids]
         else:
             assert(False), "Unsupported state initialization strategy: {:s}".format(str(self._state_init))
 
@@ -324,11 +307,11 @@ def build_amp_observations(root_states, dof_pos, dof_vel, local_root_obs, key_po
     root_h = root_pos[:, 2:3]
     heading_rot = calc_heading_quat_inv(root_rot)
 
-    # root_rot_obs = root_rot
-    # root_rot_obs = quat_to_tan_norm(root_rot_obs)
+    root_rot_obs = root_rot
+    root_rot_obs = quat_to_tan_norm(root_rot_obs)
 
-    fixed_angle_x, fixed_angle_y, fixed_angle_z = quat2euler(root_rot)
-    root_rot_obs = torch.cat((fixed_angle_x.unsqueeze(-1), fixed_angle_y.unsqueeze(-1), fixed_angle_z.unsqueeze(-1)), dim=-1)
+    # fixed_angle_x, fixed_angle_y, fixed_angle_z = quat2euler(root_rot)
+    # root_rot_obs = torch.cat((fixed_angle_x.unsqueeze(-1), fixed_angle_y.unsqueeze(-1), fixed_angle_z.unsqueeze(-1)), dim=-1)
 
     # local_root_vel = my_quat_rotate(heading_rot, root_vel)
     # local_root_ang_vel = my_quat_rotate(heading_rot, root_ang_vel)

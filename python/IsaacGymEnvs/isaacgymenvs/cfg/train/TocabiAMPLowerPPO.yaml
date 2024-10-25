@@ -91,7 +91,7 @@ params:
     amp_minibatch_size: 131072 #32768 # 4096*8
     disc_coef: 5
     disc_logit_reg: 0.05
-    disc_grad_penalty: 0.1
+    disc_grad_penalty: 5.0
     disc_reward_scale: 2
     disc_weight_decay: 0.0001
     normalize_amp_input: True
@@ -100,3 +100,4 @@ params:
     disc_reward_w: 0.3
 
     print_disc_prediction: False
+    gan_type: lsgan # wgan, lsgan, gan

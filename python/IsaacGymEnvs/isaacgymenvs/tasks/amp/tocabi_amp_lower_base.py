@@ -41,7 +41,7 @@ from isaacgym.torch_utils import quat2euler
 from ..base.vec_task import VecTask
 
 RED_BODY_IDS = [3,4,6,8, 11,12,14,16, 17,18, 19,22,24, 28, 29,32,34]
-NUM_OBS = 3 + 6 + 3 + 12 + 12# [root_h, root_euler, root_vel, root_ang_vel, command, dof_pos, dof_vel]
+NUM_OBS = 3 + 6 + 3 + 12 + 12 # [root_euler, root_global_lin_vel, root_global_ang_vel, command, dof_pos, dof_vel]
 NUM_ACTIONS = 12
 
 KEY_BODY_NAMES = ["L_Foot_Link", "R_Foot_Link"]
@@ -123,8 +123,7 @@ class TocabiAMPLowerBase(VecTask):
         self.gym.refresh_net_contact_force_tensor(self.sim)
 
         self._root_states = gymtorch.wrap_tensor(actor_root_state)
-        self._initial_root_states = self._root_states.clone()
-        self._initial_root_states[:, 7:13] = 0
+        self._initial_root_states = to_torch([0.0, 0.0, 0.93, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], device=self.device, requires_grad=False).repeat(self.num_envs, 1)
 
         # create some wrapper tensors for different slices
         self._dof_state = gymtorch.wrap_tensor(dof_state_tensor)
@@ -661,26 +660,14 @@ class TocabiAMPLowerBase(VecTask):
         if self.vel_change:
             vel_change = self.epi_len % int(self.max_episode_length / 2) == int(self.max_episode_length / 4 - 1)
             vel_change_idx = torch.nonzero(vel_change)
-            # print(vel_change_idx)
-            # if len(vel_change_idx) > 0:
-                # if vel_change_idx[0] == 0:
-                    # print("vel change")
+
             self.vel_change_duration[vel_change_idx] = torch.randint(low=1, high=250, size=(len(vel_change_idx),1),device=self.device, requires_grad=False)
             self.cur_vel_change_duration[vel_change_idx] = 0
             self.start_target_vel[vel_change_idx] = self.commands[vel_change_idx].clone()
-            # if torch.mean(self.epi_len_log[:]) > self.max_episode_length - 10/0.002:
-            #     self.final_target_vel[vel_change_idx,0] = torch_rand_float(0.8, 1.0, (len(vel_change_idx), 1), device=self.device)
-            #     self.final_target_vel[vel_change_idx,1] = torch_rand_float(self.c_y[0], self.c_y[1], (len(vel_change_idx), 1), device=self.device)
-            #     self.final_target_vel[vel_change_idx,2] = torch_rand_float(-0.2, 0.2, (len(vel_change_idx), 1), device=self.device)
-            # else: 
+
             self.final_target_vel[vel_change_idx,0] = torch_rand_float(self.c_x[0], self.c_x[1], (len(vel_change_idx), 1), device=self.device)
             self.final_target_vel[vel_change_idx,1] = torch_rand_float(self.c_y[0], self.c_y[1], (len(vel_change_idx), 1), device=self.device)
             self.final_target_vel[vel_change_idx,2] = torch_rand_float(self.c_yaw[0], self.c_yaw[1], (len(vel_change_idx), 1), device=self.device)
-
-            # if vel x is too high, set yaw to -pi/18 to pi/18
-            # target_yaw_discout = torch_rand_float(-0.174, 0.174, (len(vel_change_idx), 1), device=self.device).view(-1)
-            # self.final_target_vel[vel_change_idx,2] = torch.where(torch.logical_or(self.final_target_vel[vel_change_idx,0] > 0.8, self.final_target_vel[vel_change_idx,0] < -0.4), \
-            #                                                         target_yaw_discout[vel_change_idx], self.final_target_vel[vel_change_idx,2])
 
             mask = self.cur_vel_change_duration < self.vel_change_duration
             for i in range(3):
@@ -688,7 +675,6 @@ class TocabiAMPLowerBase(VecTask):
                                                                 , self.commands[:,i])
             self.cur_vel_change_duration += mask.int()
 
-        # print(self.commands[0,[0,2]])
         for _ in range(self.control_freq_inv):
             if (self._pd_control):
                 pd_tar = self._action_to_pd_targets(self.actions)
@@ -736,7 +722,6 @@ class TocabiAMPLowerBase(VecTask):
 
         self.epi_len[:] +=1
 
-            # self.gym.set_light_parameters(self.sim, 0, gymapi.Vec3(1.0,1.0,1.0), gymapi.Vec3(1.0,1.0,1.0), gymapi.Vec3(0.0,0.0,-1.0))
         self.render()
         return
 
@@ -941,7 +926,7 @@ def compute_humanoid_observations(root_states, rootvel_noise, dof_pos, dof_pos_b
     fixed_angle_y += quat_bias[:, 1]
     fixed_angle_z += quat_bias[:, 2]
 
-    local_root_vel = quat_rotate_inverse(root_rot, root_vel)
+    # local_root_vel = quat_rotate_inverse(root_rot, root_vel)
     # local_root_ang_vel = quat_rotate_inverse(root_rot, root_ang_vel)
     
     dof_pos[:, :12] += dof_pos_bias
@@ -958,7 +943,7 @@ def compute_humanoid_observations(root_states, rootvel_noise, dof_pos, dof_pos_b
     # local_end_pos = my_quat_rotate(flat_heading_rot, flat_end_pos)
     # flat_local_key_pos = local_end_pos.view(local_key_body_pos.shape[0], local_key_body_pos.shape[1] * local_key_body_pos.shape[2])
 
-    obs = torch.cat((fixed_angle_x.unsqueeze(-1), fixed_angle_y.unsqueeze(-1), fixed_angle_z.unsqueeze(-1), local_root_vel, root_ang_vel, commands, dof_pos[:,:12], dof_vel[:,:12]), dim=-1)
+    obs = torch.cat((fixed_angle_x.unsqueeze(-1), fixed_angle_y.unsqueeze(-1), fixed_angle_z.unsqueeze(-1), root_vel, root_ang_vel, commands, dof_pos[:,:12], dof_vel[:,:12]), dim=-1)
     return obs
 
 @torch.jit.script
@@ -984,7 +969,7 @@ def compute_humanoid_reward(root_states, dof_vel, dof_vel_pre, commands, actions
     local_root_lin_vel = quat_rotate_inverse(root_states[:, 3:7], root_states[:, 7:10])
 
     _rew_lin_vel_x = 0.8 * torch.exp(-6.0 *torch.square(commands[:, 0] - local_root_lin_vel[:, 0]))
-    _rew_lin_vel_y = 0.8 * torch.exp(-6.0 *torch.square(commands[:, 1] - local_root_lin_vel[:, 1])) 
+    # _rew_lin_vel_y = 0.8 * torch.exp(-6.0 *torch.square(commands[:, 1] - local_root_lin_vel[:, 1])) 
     _rew_ang_vel_yaw = 0.6 * torch.exp(-7.0 *torch.square(commands[:, 2] - root_states[:, 12]))
     ############################### Contact Force Threshold Rewards ############################
     left_foot_threshold = contact_force[:, 8, 2].unsqueeze(-1) > 1.4*9.81*total_mass
@@ -1013,10 +998,10 @@ def compute_humanoid_reward(root_states, dof_vel, dof_vel_pre, commands, actions
     reward += _reward_torque_regulation
     reward += _reward_torque_diff_regulation
 
-    reward_names = ['x_vel_tracking', 'y_vel_tracking','yaw_vel_tracking',\
+    reward_names = ['x_vel_tracking','yaw_vel_tracking',\
                     'contact_force_threshold', 'contact_force_penalty', \
                     'joint_velocity_regulation', 'joint_acceleration_regulation', 'torque_regulation', 'torque_diff_regulation']
-    reward_values = torch.stack([_rew_lin_vel_x, _rew_lin_vel_y, _rew_ang_vel_yaw, \
+    reward_values = torch.stack([_rew_lin_vel_x, _rew_ang_vel_yaw, \
                                  _reward_contact_force_threshold, _contact_force_penalty, \
                                  _reward_joint_velocity_regulation, _reward_joint_acceleration_regulation, _reward_torque_regulation, _reward_torque_diff_regulation], dim=-1)
 

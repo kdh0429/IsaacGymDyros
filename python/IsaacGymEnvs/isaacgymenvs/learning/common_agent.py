@@ -120,8 +120,8 @@ class CommonAgent(a2c_continuous.A2CAgent):
         self.frame = 0
         self.obs = self.env_reset()
         self.curr_frames = self.batch_size_envs
-
-        self.model_output_file = os.path.join(self.network_path, self.config['name'])
+        from datetime import datetime
+        self.model_output_file = os.path.join(self.network_path, self.config['name'], datetime.now().strftime('%m%d_%H%M'))
 
         if self.multi_gpu:
             self.hvd.setup_algo(self)
@@ -130,6 +130,9 @@ class CommonAgent(a2c_continuous.A2CAgent):
 
         while True:
             epoch_num = self.update_epoch()
+            ########### JY edit for linear change sigma ###############
+            self.model.update_action_noise((self.max_epochs-epoch_num) / self.max_epochs)
+            ################    end edit    ############################
             train_info = self.train_epoch()
 
             sum_time = train_info['total_time']

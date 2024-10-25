@@ -54,3 +54,13 @@ hydra:
   run:
     dir: .
 
+
+# WANDB configuration FOR amp
+wandb_activate: True # set to False for a2c_common_dyros
+wandb_group: ''
+wandb_name: ${train.params.config.name}
+wandb_entity: 'yongarry' # USE YOUR OWN ENTITY
+wandb_project: ${task.name}
+wandb_tags: []
+wandb_logcode_dir: '' 
+

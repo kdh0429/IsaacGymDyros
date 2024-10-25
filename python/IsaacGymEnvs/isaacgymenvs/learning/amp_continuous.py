@@ -54,6 +54,9 @@ class AMPAgent(common_agent.CommonAgent):
         if self._normalize_amp_input:
             self._amp_input_mean_std = RunningMeanStd(self._amp_observation_space.shape).to(self.ppo_device)
 
+        self._gan_type = config['gan_type']
+        print(f'GAN type: {self._gan_type}')
+
         self.reward_names = []
         self.reward_values = torch.zeros((self.num_agents*self.num_actors, len(self.reward_names)), dtype=torch.float32 ,device=self.ppo_device)
 
@@ -441,19 +444,35 @@ class AMPAgent(common_agent.CommonAgent):
         return disc_info
 
     def _disc_loss_neg(self, disc_logits):
-        bce = torch.nn.BCEWithLogitsLoss()
-        loss = bce(disc_logits, torch.zeros_like(disc_logits))
-
-        # Least Square GAN
-        # loss = 0.5 * torch.mean((disc_logits + torch.ones_like(disc_logits)) ** 2)
+        if self._gan_type == 'gan':
+            # Vanilla GAN 
+            bce = torch.nn.BCEWithLogitsLoss()
+            loss = bce(disc_logits, torch.zeros_like(disc_logits))
+        elif self._gan_type == 'lsgan':
+            # Least Square GAN
+            loss = 0.5 * torch.mean((disc_logits + torch.ones_like(disc_logits)) ** 2)
+        elif self._gan_type == 'wgan':
+            # Wasserstein GAN
+            disc_tanh = torch.tanh(disc_logits * 0.3)
+            loss = torch.mean(disc_tanh)
+        else:
+            raise ValueError(f"Invalid GAN type: {self._gan_type}")
         return loss
     
     def _disc_loss_pos(self, disc_logits):
-        bce = torch.nn.BCEWithLogitsLoss()
-        loss = bce(disc_logits, torch.ones_like(disc_logits))
-
-        # Least Square GAN
-        # loss = 0.5 * torch.mean((disc_logits - torch.ones_like(disc_logits)) ** 2)
+        if self._gan_type == 'gan':
+            # Vanilla GAN 
+            bce = torch.nn.BCEWithLogitsLoss()
+            loss = bce(disc_logits, torch.ones_like(disc_logits))
+        elif self._gan_type == 'lsgan':
+            # Least Square GAN
+            loss = 0.5 * torch.mean((disc_logits - torch.ones_like(disc_logits)) ** 2)
+        elif self._gan_type == 'wgan':
+            # Wasserstein GAN
+            disc_tanh = torch.tanh(disc_logits * 0.3)
+            loss = -torch.mean(disc_tanh)
+        else:
+            raise ValueError(f"Invalid GAN type: {self._gan_type}")
         return loss
 
     def _compute_disc_acc(self, disc_agent_logit, disc_demo_logit):
@@ -522,11 +541,19 @@ class AMPAgent(common_agent.CommonAgent):
     def _calc_disc_rewards(self, amp_obs):
         with torch.no_grad():
             disc_logits = self._eval_disc(amp_obs)
-            prob = 1 / (1 + torch.exp(-disc_logits)) 
-            disc_r = -torch.log(torch.maximum(1 - prob, torch.tensor(0.0001, device=self.ppo_device)))
-
-            # Least Square GAN
-            # disc_r = torch.maximum(1.0 - 0.25 * torch.square(disc_logits - 1), torch.tensor(0.0, device=self.ppo_device))
+            
+            if self._gan_type == 'gan':
+                # Vanilla GAN
+                prob = 1 / (1 + torch.exp(-disc_logits)) 
+                disc_r = -torch.log(torch.maximum(1 - prob, torch.tensor(0.0001, device=self.ppo_device)))
+            elif self._gan_type == 'lsgan':
+                # Least Square GAN
+                disc_r = torch.maximum(1.0 - 0.25 * torch.square(disc_logits - 1), torch.tensor(0.0, device=self.ppo_device))
+            elif self._gan_type == 'wgan':
+                # Wasserstein GAN
+                disc_r = torch.exp(disc_logits)
+            else:
+                raise ValueError(f"Invalid GAN type: {self._gan_type}")
             
             disc_r *= self._disc_reward_scale
         return disc_r
@@ -556,7 +583,7 @@ class AMPAgent(common_agent.CommonAgent):
         self.writer.add_scalar('info/disc_agent_logit', torch_ext.mean_list(train_info['disc_agent_logit']).item(), frame)
         self.writer.add_scalar('info/disc_demo_logit', torch_ext.mean_list(train_info['disc_demo_logit']).item(), frame)
         self.writer.add_scalar('info/disc_grad_penalty', torch_ext.mean_list(train_info['disc_grad_penalty']).item(), frame)
-        self.writer.add_scalar('info/disc_logit_loss', torch_ext.mean_list(train_info['disc_logit_loss']).item(), frame)
+        # self.writer.add_scalar('info/disc_logit_loss', torch_ext.mean_list(train_info['disc_logit_loss']).item(), frame)
 
         disc_reward_std, disc_reward_mean = torch.std_mean(train_info['disc_rewards'])
         # self.writer.add_scalar('info/disc_reward_mean', disc_reward_mean.item(), frame)
@@ -565,7 +592,7 @@ class AMPAgent(common_agent.CommonAgent):
         specific_mean_rewards_values = torch.mean(self.reward_values, axis=0)
         for i in range(len(self.reward_names)):
             self.writer.add_scalar('rewards/' + self.reward_names[i], specific_mean_rewards_values[i].item(), frame)
-        self.writer.add_scalar('rewards/disc', disc_reward_mean.item(), frame)
+        self.writer.add_scalar('rewards/discriminator', disc_reward_mean.item(), frame)
 
         return
 
