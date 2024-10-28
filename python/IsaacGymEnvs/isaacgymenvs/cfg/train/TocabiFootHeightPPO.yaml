@@ -19,10 +19,17 @@ params:
           name: default
         sigma_init:
           name: const_initializer
-          val: -2.302585 # -2.9957 -> 1n(1/20)
+          # val: -1.6 # 1n(1/5)
+          val: -2.079441 # 1n(1/8)
+          # val: -2.302585 #ln(1/10) 
+          # val: -2.9957 #n(1/20)
         sigma_last:
           name: const_initializer
-          val: -2.9957
+          # val: -2.302585 #ln(1/10)
+          # val: -2.70805 #ln(1/15)
+          # val: -2.890371 #ln(1/18)
+          # val: -2.944444 #ln(1/19)
+          val: -2.9957 #ln(1/20)
         fixed_sigma: True
 
     mlp:

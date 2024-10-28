@@ -44,6 +44,7 @@ from tasks.tocabi_new_walk import TocabiNewWalk
 from tasks.dyros_dynamic_walk import DyrosDynamicWalk
 from tasks.tocabi_amp_lower import TocabiAMPLower
 from tasks.tocabi_foot_height import TocabiFootHeight
+from tasks.dyros_dynamic_walk2 import DyrosDynamicWalk2
 # Mappings from strings to environments
 isaacgym_task_map = {
     "AllegroHand": AllegroHand,
@@ -62,5 +63,6 @@ isaacgym_task_map = {
     "TocabiNewWalk" : TocabiNewWalk,
     "DyrosDynamicWalk" : DyrosDynamicWalk,
     "TocabiAMPLower" : TocabiAMPLower,
-    "TocabiFootHeight" : TocabiFootHeight
+    "TocabiFootHeight" : TocabiFootHeight,
+    "DyrosDynamicWalk2" : DyrosDynamicWalk2
 }

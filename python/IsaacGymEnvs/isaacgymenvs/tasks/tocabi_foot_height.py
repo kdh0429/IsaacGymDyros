@@ -132,7 +132,9 @@ class TocabiFootHeight(VecTask):
         self.init_mocap_data_idx = torch.zeros(self.num_envs,1,device=self.device, dtype=torch.long)
         self.mocap_data_idx = torch.zeros(self.num_envs,1,device=self.device, dtype=torch.long)
         # mocap_data_non_torch = np.genfromtxt('../assets/DeepMimic/processed_data_tocabi_walk.txt',encoding='ascii')
-        mocap_data_non_torch = np.genfromtxt('../assets/DeepMimic/processed_data_tocabi_walk_250mm_20mm.txt',encoding='ascii') 
+        # mocap_data_non_torch = np.genfromtxt('../assets/DeepMimic/processed_data_tocabi_walk_250mm_20mm.txt',encoding='ascii') 
+        # mocap_data_non_torch = np.genfromtxt('../assets/DeepMimic/deepmimic-H(200mm)-inplace-ref_q.txt',encoding='ascii') 
+        mocap_data_non_torch = np.genfromtxt('../assets/DeepMimic/deepmimic-H(200mm)-inplace-cur_q.txt',encoding='ascii') 
         self.mocap_data = torch.tensor(mocap_data_non_torch,device=self.device, dtype=torch.float)
         self.mocap_data_num = int(self.mocap_data.shape[0] - 1)
         self.mocap_cycle_dt = 0.0005
@@ -149,10 +151,10 @@ class TocabiFootHeight(VecTask):
         self.qvel_noise = torch.zeros_like(self.dof_vel)
         self.qpos_pre = torch.zeros_like(self.dof_pos)
         #for random target velocity
-        vel_mag = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False) * 0.3
-        vel_theta = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)* 2 * 3.14159265358979
-        x_vel_target = vel_mag[:] * torch.cos(vel_theta[:]) + 0.1
-        y_vel_target = vel_mag[:] * torch.sin(vel_theta[:])
+        vel_mag = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False) * 0.4
+        vel_theta = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False) * 2 * 3.14159265358979
+        x_vel_target = vel_mag[:] * torch.cos(vel_theta[:]) + 0.1 # -0.3 ~ 0.5
+        y_vel_target = vel_mag[:] * torch.sin(vel_theta[:]) / 2.0 # -0.2 ~ 0.2
         self.target_vel =  torch.cat([x_vel_target,y_vel_target],dim=1)
         # print(f"(init)vel_mag: {vel_mag[0]}")
         # print(f"(init)vel_theta: {vel_theta[0]}")
@@ -682,10 +684,10 @@ class TocabiFootHeight(VecTask):
         self._reset_dof_states(env_ids)
 
         # reset target_vel & initial mocap_data (starting foot)
-        vel_mag = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False) * 0.3
+        vel_mag = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False) * 0.4
         vel_theta = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False) * 2 * 3.14159265358979
-        x_vel_target = vel_mag[:] * torch.cos(vel_theta[:]) + 0.1
-        y_vel_target = vel_mag[:] * torch.sin(vel_theta[:])
+        x_vel_target = vel_mag[:] * torch.cos(vel_theta[:]) + 0.1 # -0.3 ~ 0.5
+        y_vel_target = vel_mag[:] * torch.sin(vel_theta[:]) / 2.0 # -0.2 ~ 0.2
         self.target_vel[env_ids] =  torch.cat([x_vel_target,y_vel_target],dim=1)
         # print(f"(reset)vel_mag: {vel_mag[0]}")
         # print(f"(reset)vel_theta: {vel_theta[0]}")
@@ -1001,7 +1003,7 @@ def compute_humanoid_walk_reward(
            qacc_regulation, foot_contact_reward, contact_force_diff_regulation,\
             double_support_force_diff_regulation, force_thres_penalty, force_diff_thres_penalty, force_ref_reward],1)
 
-    total_reward = mimic_body_orientation_reward + qpos_regulation + qvel_regulation + contact_force_penalty_thres + \
+    total_reward = mimic_body_orientation_reward + qpos_regulation + qvel_regulation + contact_force_penalty+ \
         torque_regulation + torque_diff_regulation + body_vel_reward + qacc_regulation + foot_contact_reward + \
         contact_force_diff_regulation + double_support_force_diff_regulation + force_thres_penalty + force_diff_thres_penalty + force_ref_reward
 

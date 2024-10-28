@@ -36,25 +36,25 @@ env:
 
   learn:
     ## TASK ##
-    QPosMimicReward : 0.35
-    BodyVelocityReward : 0.0
-    ForceRefReward : 0.0
+    QPosMimicReward : 0.6
+    BodyVelocityReward : 0.45
+    ForceRefReward : 0.1
 
     ## FOOTCONTACT ##
-    FootContactReward : 0.0
+    FootContactReward : 0.2
 
     ## CONTACT FORCE PENALTIES ##
-    ContactForceThresholdPenalty : 0.0
-    ForceThresholdPenalty : -0.0
-    ForceDiffThresholdPenalty : -0.00
+    ContactForceThresholdPenalty : -1.5
+    ForceThresholdPenalty : -0.2
+    ForceDiffThresholdPenalty : -0.05
 
     ## REGULARIZATION ##
-    MimicBodyOrientationReward : 0.0
-    QVelRegulationReward : 0.00
-    QAccRegulationReward : 0.00
-    TorqueRegulationReward : 0.00
-    TorqueDiffRegulationReward : 0.0
-    ContactForceDiffRegulationReward : 0.0
+    MimicBodyOrientationReward : 0.15
+    QVelRegulationReward : 0.1
+    QAccRegulationReward : 0.05
+    TorqueRegulationReward : 0.05
+    TorqueDiffRegulationReward : 0.6
+    ContactForceDiffRegulationReward : 0.2
     DoubleSupportDiffRegulationReward : 0.0
 
 sim:
